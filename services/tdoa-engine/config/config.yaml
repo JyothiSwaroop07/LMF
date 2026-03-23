@@ -1,0 +1,14 @@
+grpc:
+  port: 8006
+
+redis:
+  addresses:
+    - "redis-cluster:6379"
+
+min_measurements: 3
+
+metrics:
+  port: 9096
+log:
+  level: "info"
+  format: "json"

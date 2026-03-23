@@ -1,0 +1,91 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: location-request
+  namespace: lmf
+  labels:
+    app: location-request
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: location-request
+  template:
+    metadata:
+      labels:
+        app: location-request
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2111"
+    spec:
+      containers:
+      - name: location-request
+        image: lmf/location-request:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 8001
+          name: http
+        - containerPort: 9001
+          name: grpc
+        - containerPort: 2111
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        readinessProbe:
+          tcpSocket:
+            port: 9001
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          tcpSocket:
+            port: 9001
+          initialDelaySeconds: 30
+          periodSeconds: 20
+          failureThreshold: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: location-request
+  namespace: lmf
+spec:
+  selector:
+    app: location-request
+  ports:
+  - name: grpc
+    port: 9001
+    targetPort: 9001
+  - name: metrics
+    port: 2111
+    targetPort: 2111
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: location-request
+  namespace: lmf
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: location-request
+  minReplicas: 1
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 65

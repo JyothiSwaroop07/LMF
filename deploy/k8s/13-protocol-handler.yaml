@@ -1,0 +1,54 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: protocol-handler
+  namespace: lmf
+  labels:
+    app: protocol-handler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: protocol-handler
+  template:
+    metadata:
+      labels:
+        app: protocol-handler
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2113"
+    spec:
+      containers:
+      - name: protocol-handler
+        image: lmf/protocol-handler:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9003
+          name: grpc
+        - containerPort: 2113
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: protocol-handler
+  namespace: lmf
+spec:
+  selector:
+    app: protocol-handler
+  ports:
+  - name: grpc
+    port: 9003
+    targetPort: 9003
+  type: ClusterIP

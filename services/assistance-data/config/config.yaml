@@ -1,0 +1,24 @@
+server:
+  port: 8010
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9010"
+  maxRecvMsgSize: 16777216
+
+redis:
+  addresses:
+    - "redis-cluster.lmf.svc.cluster.local:6379"
+  password: ""
+  db: 0
+
+metrics:
+  port: 2120
+
+log:
+  level: "info"
+  format: "json"
+
+gnss:
+  ephemerisRefreshIntervalMinutes: 120
+  ionoRefreshIntervalMinutes: 60

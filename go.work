@@ -1,0 +1,19 @@
+go 1.22
+
+use (
+	./common
+	./services/assistance-data
+	./services/ecid-engine
+	./services/event-manager
+	./services/fusion-engine
+	./services/gnss-engine
+	./services/location-request
+	./services/method-selector
+	./services/privacy-auth
+	./services/protocol-handler
+	./services/qos-manager
+	./services/rtt-engine
+	./services/sbi-gateway
+	./services/session-manager
+	./services/tdoa-engine
+)

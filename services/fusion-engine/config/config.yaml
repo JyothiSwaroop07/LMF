@@ -1,0 +1,14 @@
+server:
+  port: 8009
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9009"
+  maxRecvMsgSize: 4194304
+
+metrics:
+  port: 2119
+
+log:
+  level: "info"
+  format: "json"

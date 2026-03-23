@@ -1,0 +1,104 @@
+---
+# Deny all ingress by default in the lmf namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: lmf
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# Allow SBI Gateway to receive from 5GC (from 5gc namespace or via Istio)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-sbi-gateway-ingress
+  namespace: lmf
+spec:
+  podSelector:
+    matchLabels:
+      app: sbi-gateway
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 8000
+    - port: 9000
+---
+# Allow location-request to receive from sbi-gateway only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-location-request-ingress
+  namespace: lmf
+spec:
+  podSelector:
+    matchLabels:
+      app: location-request
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: sbi-gateway
+    ports:
+    - port: 9001
+---
+# Allow positioning engines to receive from location-request only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-engines-from-location-request
+  namespace: lmf
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - gnss-engine
+      - tdoa-engine
+      - ecid-engine
+      - rtt-engine
+      - fusion-engine
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: location-request
+---
+# Allow Prometheus to scrape metrics from all LMF pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: lmf
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - port: 2110
+    - port: 2111
+    - port: 2112
+    - port: 2113
+    - port: 2114
+    - port: 2115
+    - port: 2116
+    - port: 2117
+    - port: 2118
+    - port: 2119
+    - port: 2120
+    - port: 2121
+    - port: 2122
+    - port: 2123

@@ -1,0 +1,105 @@
+{{/*
+Generates Deployment + Service + optional PDB for each internal gRPC microservice.
+*/}}
+{{- $root := . }}
+{{- $services := list
+  (dict "name" "location-request"  "cfg" .Values.services.locationRequest  "metricsPort" 2111)
+  (dict "name" "session-manager"   "cfg" .Values.services.sessionManager   "metricsPort" 2112)
+  (dict "name" "protocol-handler"  "cfg" .Values.services.protocolHandler  "metricsPort" 2113)
+  (dict "name" "method-selector"   "cfg" .Values.services.methodSelector   "metricsPort" 2114)
+  (dict "name" "gnss-engine"       "cfg" .Values.services.gnssEngine       "metricsPort" 2115)
+  (dict "name" "tdoa-engine"       "cfg" .Values.services.tdoaEngine       "metricsPort" 2116)
+  (dict "name" "ecid-engine"       "cfg" .Values.services.ecidEngine       "metricsPort" 2117)
+  (dict "name" "rtt-engine"        "cfg" .Values.services.rttEngine        "metricsPort" 2118)
+  (dict "name" "fusion-engine"     "cfg" .Values.services.fusionEngine     "metricsPort" 2119)
+  (dict "name" "assistance-data"   "cfg" .Values.services.assistanceData   "metricsPort" 2120)
+  (dict "name" "event-manager"     "cfg" .Values.services.eventManager     "metricsPort" 2121)
+  (dict "name" "privacy-auth"      "cfg" .Values.services.privacyAuth      "metricsPort" 2122)
+  (dict "name" "qos-manager"       "cfg" .Values.services.qosManager       "metricsPort" 2123)
+}}
+{{- range $svc := $services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "lmf.labels" $root | nindent 4 }}
+    app: {{ $svc.name }}
+spec:
+  replicas: {{ $svc.cfg.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $svc.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $svc.name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.metricsPort | quote }}
+    spec:
+      containers:
+      - name: {{ $svc.name }}
+        image: {{ include "lmf.image" (dict "name" $svc.name "Values" $root.Values) }}
+        imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ $svc.cfg.grpcPort }}
+          name: grpc
+        - containerPort: {{ $svc.metricsPort }}
+          name: metrics
+        env:
+          {{- include "lmf.commonEnv" $root | nindent 10 }}
+        resources:
+          requests:
+            cpu: {{ $svc.cfg.resources.requests.cpu | quote }}
+            memory: {{ $svc.cfg.resources.requests.memory | quote }}
+          limits:
+            cpu: {{ $svc.cfg.resources.limits.cpu | quote }}
+            memory: {{ $svc.cfg.resources.limits.memory | quote }}
+        readinessProbe:
+          grpc:
+            port: {{ $svc.cfg.grpcPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          grpc:
+            port: {{ $svc.cfg.grpcPort }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $root.Values.global.namespace }}
+  labels:
+    {{- include "lmf.labels" $root | nindent 4 }}
+    app: {{ $svc.name }}
+    app.kubernetes.io/part-of: lmf
+spec:
+  selector:
+    app: {{ $svc.name }}
+  ports:
+  - name: grpc
+    port: {{ $svc.cfg.grpcPort }}
+    targetPort: {{ $svc.cfg.grpcPort }}
+  - name: metrics
+    port: {{ $svc.metricsPort }}
+    targetPort: {{ $svc.metricsPort }}
+  type: ClusterIP
+{{- if $root.Values.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $svc.name }}
+  namespace: {{ $root.Values.global.namespace }}
+spec:
+  minAvailable: {{ $root.Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ $svc.name }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,15 @@
+grpc:
+  port: 8005
+
+gnss_server_url: "https://gnss-ref.example.com"
+assistance_refresh_interval_seconds: 30
+
+redis:
+  addresses:
+    - "redis-cluster:6379"
+
+metrics:
+  port: 9095
+log:
+  level: "info"
+  format: "json"

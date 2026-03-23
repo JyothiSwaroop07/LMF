@@ -1,0 +1,57 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: session-manager
+  namespace: lmf
+  labels:
+    app: session-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: session-manager
+  template:
+    metadata:
+      labels:
+        app: session-manager
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2112"
+    spec:
+      containers:
+      - name: session-manager
+        image: lmf/session-manager:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9002
+          name: grpc
+        - containerPort: 2112
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: session-manager
+  namespace: lmf
+spec:
+  selector:
+    app: session-manager
+  ports:
+  - name: grpc
+    port: 9002
+    targetPort: 9002
+  - name: metrics
+    port: 2112
+    targetPort: 2112
+  type: ClusterIP

@@ -1,0 +1,54 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: method-selector
+  namespace: lmf
+  labels:
+    app: method-selector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: method-selector
+  template:
+    metadata:
+      labels:
+        app: method-selector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2114"
+    spec:
+      containers:
+      - name: method-selector
+        image: lmf/method-selector:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9004
+          name: grpc
+        - containerPort: 2114
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: method-selector
+  namespace: lmf
+spec:
+  selector:
+    app: method-selector
+  ports:
+  - name: grpc
+    port: 9004
+    targetPort: 9004
+  type: ClusterIP

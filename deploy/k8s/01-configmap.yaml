@@ -1,0 +1,36 @@
+---
+# Shared ConfigMap for all LMF services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lmf-common-config
+  namespace: lmf
+data:
+  LOG_LEVEL: "info"
+  LOG_FORMAT: "json"
+  REDIS_ADDR: "redis-cluster:6379"
+  KAFKA_BROKERS: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092"
+  CASSANDRA_HOSTS: "cassandra-0.cassandra:9042,cassandra-1.cassandra:9042,cassandra-2.cassandra:9042"
+  AMF_BASE_URL: "http://amf-service.core.svc.cluster.local:8080"
+  UDM_BASE_URL: "http://udm-service.core.svc.cluster.local:8080"
+  NRF_BASE_URL: "http://nrf-service.core.svc.cluster.local:8080"
+
+
+  #MY CHANGES - update service endpoints to match new service names and ports
+  LMF_SERVICES_LOCATIONREQUEST: "location-request.lmf.svc.cluster.local:9001"
+  LMF_SERVICES_SESSIONMANAGER:  "session-manager.lmf.svc.cluster.local:9002"
+  LMF_SERVICES_METHODSELECTOR:  "method-selector.lmf.svc.cluster.local:9004"
+  LMF_SERVICES_PROTOCOLHANDLER: "protocol-handler.lmf.svc.cluster.local:9003"
+  LMF_SERVICES_GNSSENGINE:      "gnss-engine.lmf.svc.cluster.local:9005"
+  LMF_SERVICES_TDOAENGINE:      "tdoa-engine.lmf.svc.cluster.local:9006"
+  LMF_SERVICES_ECIDENGINE:      "ecid-engine.lmf.svc.cluster.local:9007"
+  LMF_SERVICES_RTTENGINE:       "rtt-engine.lmf.svc.cluster.local:9008"
+  LMF_SERVICES_FUSIONENGINE:    "fusion-engine.lmf.svc.cluster.local:9009"
+  LMF_SERVICES_QOSMANAGER:      "qos-manager.lmf.svc.cluster.local:9013"
+  LMF_SERVICES_PRIVACYAUTH:     "privacy-auth.lmf.svc.cluster.local:9012"
+  LMF_SERVICES_ASSISTANCEDATA:  "assistance-data.lmf.svc.cluster.local:9010"
+  LMF_SERVICES_EVENTMANAGER:    "event-manager.lmf.svc.cluster.local:9011"
+
+  # Server config
+  LMF_SERVER_PORT: "8000"
+  LMF_GRPC_PORT:   "9000"

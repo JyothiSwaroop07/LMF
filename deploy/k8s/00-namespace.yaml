@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lmf
+  labels:
+    name: lmf
+    istio-injection: enabled

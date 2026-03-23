@@ -1,0 +1,26 @@
+server:
+  port: 8001
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9001"
+  maxRecvMsgSize: 4194304
+
+metrics:
+  port: 2111
+
+log:
+  level: "info"
+  format: "json"
+
+services:
+  sessionManager:  "session-manager:9002"
+  methodSelector:  "method-selector:9004"
+  protocolHandler: "protocol-handler:9003"
+  gnssEngine:      "gnss-engine:9005"
+  tdoaEngine:      "tdoa-engine:9006"
+  ecidEngine:      "ecid-engine:9007"
+  rttEngine:       "rtt-engine:9008"
+  fusionEngine:    "fusion-engine:9009"
+  qosManager:      "qos-manager:9013"
+  privacyAuth:     "privacy-auth:9012"

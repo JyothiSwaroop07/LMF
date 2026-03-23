@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package lmf.v1;
+
+option go_package = "github.com/5g-lmf/common/pb;pb";
+
+import "lmf_common.proto";
+
+// LppMessageType per TS 36.355
+enum LppMessageType {
+  LPP_MSG_UNSPECIFIED = 0;
+  LPP_MSG_REQUEST_CAPABILITIES = 1;
+  LPP_MSG_PROVIDE_CAPABILITIES = 2;
+  LPP_MSG_REQUEST_ASSISTANCE_DATA = 3;
+  LPP_MSG_PROVIDE_ASSISTANCE_DATA = 4;
+  LPP_MSG_REQUEST_LOCATION_INFORMATION = 5;
+  LPP_MSG_PROVIDE_LOCATION_INFORMATION = 6;
+  LPP_MSG_ABORT = 7;
+}
+
+// NrppaProcedure per TS 38.455
+enum NrppaProcedure {
+  NRPPA_PROCEDURE_UNSPECIFIED = 0;
+  NRPPA_PROCEDURE_ECID_MEASUREMENT_INITIATION = 1;
+  NRPPA_PROCEDURE_POSITIONING_INFORMATION_EXCHANGE = 2;
+  NRPPA_PROCEDURE_MEASUREMENT_REPORTING = 3;
+  NRPPA_PROCEDURE_TRP_INFORMATION_EXCHANGE = 4;
+  NRPPA_PROCEDURE_POSITIONING_ACTIVATION = 5;
+  NRPPA_PROCEDURE_SRS_CONFIGURATION_EXCHANGE = 6;
+}
+
+// LppCapabilities from UE ProvideCapabilities
+message LppCapabilities {
+  bool gnss_supported = 1;
+  repeated string gnss_constellations = 2;
+  bool dl_tdoa_supported = 3;
+  bool prs_timing_supported = 4;
+  bool multi_rtt_supported = 5;
+  bool wlan_supported = 6;
+  bool bluetooth_supported = 7;
+  bool barometric_supported = 8;
+  bool ecid_supported = 9;
+}
+
+// SendLppRequest sends an LPP message to a UE via AMF
+message SendLppRequest {
+  string supi = 1;
+  string amf_instance_id = 2;
+  string session_id = 3;
+  LppMessageType message_type = 4;
+  bytes payload = 5;           // Encoded LPP message body
+  int32 sequence_number = 6;
+  bool ack_requested = 7;
+}
+
+// SendLppResponse carries the UE's LPP response
+message SendLppResponse {
+  LppMessageType response_type = 1;
+  bytes payload = 2;
+  int32 sequence_number = 3;
+  string error = 4;
+}
+
+// SendNrppaRequest sends an NRPPa message to a gNB via AMF
+message SendNrppaRequest {
+  string cell_nci = 1;
+  string amf_instance_id = 2;
+  string session_id = 3;
+  NrppaProcedure procedure = 4;
+  bytes payload = 5;
+}
+
+// SendNrppaResponse carries the gNB's NRPPa response
+message SendNrppaResponse {
+  NrppaProcedure procedure = 1;
+  bytes payload = 2;
+  string error = 3;
+}
+
+// GetUeCapabilitiesRequest retrieves cached UE caps
+message GetUeCapabilitiesRequest {
+  string supi = 1;
+  string session_id = 2;
+}
+
+// GetUeCapabilitiesResponse carries capabilities
+message GetUeCapabilitiesResponse {
+  UeCapabilities capabilities = 1;
+  bool from_cache = 2;
+  string error = 3;
+}
+
+// TrpInfo describes a Transmission Reception Point
+message TrpInfo {
+  string trp_id = 1;
+  string nci = 2;
+  double latitude = 3;
+  double longitude = 4;
+  double altitude = 5;
+}
+
+// NrppaMeasurementResult holds NRPPa E-CID measurement results
+message NrppaMeasurementResult {
+  string serving_cell_nci = 1;
+  double ue_rx_tx_time_diff = 2;
+  double gnb_rx_tx_time_diff = 3;
+  int32 timing_advance = 4;
+  repeated RsrpEntry rsrp_measurements = 5;
+}
+
+// RsrpEntry (reused here for proto clarity)
+message RsrpEntry {
+  string cell_nci = 1;
+  double rsrp_dbm = 2;
+  double rsrq_db = 3;
+}
+
+// ProtocolHandlerService manages LPP and NRPPa protocol exchanges
+service ProtocolHandlerService {
+  rpc SendLpp (SendLppRequest) returns (SendLppResponse);
+  rpc SendNrppa (SendNrppaRequest) returns (SendNrppaResponse);
+  rpc GetUeCapabilities (GetUeCapabilitiesRequest) returns (GetUeCapabilitiesResponse);
+}

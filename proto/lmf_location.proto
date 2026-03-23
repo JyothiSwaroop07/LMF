@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package lmf.v1;
+
+option go_package = "github.com/5g-lmf/common/pb;pb";
+
+import "lmf_common.proto";
+
+// LocationRequest for gRPC internal location determination
+message LocationRequestMsg {
+  string session_id = 1;
+  string supi = 2;
+  string pei = 3;
+  string gpsi = 4;
+  LcsQoS lcs_qos = 5;
+  PositioningMethod preferred_method = 6;
+  repeated PositioningMethod additional_methods = 7;
+  string amf_instance_id = 8;
+  LcsClientType lcs_client_type = 9;
+  string hgmlc_callback_uri = 10;
+}
+
+// LocationResponse for gRPC internal result
+message LocationResponseMsg {
+  string session_id = 1;
+  LocationEstimate location_estimate = 2;
+  AccuracyFulfilmentIndicator accuracy_indicator = 3;
+  VelocityEstimate velocity_estimate = 4;
+  repeated PositioningDataEntry positioning_data = 5;
+  int64 timestamp_unix_ms = 6;
+  string error_code = 7;
+  string error_detail = 8;
+}
+
+// PositioningDataEntry records method usage
+message PositioningDataEntry {
+  PositioningMethod pos_method = 1;
+  bool success = 2;
+}
+
+// CancelRequest for cancelling a location session
+message CancelRequest {
+  string session_id = 1;
+  string supi = 2;
+}
+
+// CancelResponse confirms cancellation
+message CancelResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// SessionStatusRequest for status polling
+message SessionStatusRequest {
+  string session_id = 1;
+}
+
+// SessionStatusResponse carries session status
+message SessionStatusResponse {
+  string session_id = 1;
+  SessionStatus status = 2;
+  int64 started_at_unix_ms = 3;
+}
+
+// Session CRUD messages
+message SessionCreateRequest {
+  string supi = 1;
+  string pei = 2;
+  string gpsi = 3;
+  string amf_instance_id = 4;
+  LcsQoS lcs_qos = 5;
+  LcsClientType lcs_client_type = 6;
+  PositioningMethod positioning_method = 7;
+  int64 ttl_seconds = 8;
+}
+
+message SessionCreateResponse {
+  string session_id = 1;
+}
+
+message SessionGetRequest {
+  string session_id = 1;
+}
+
+message SessionGetResponse {
+  string session_id = 1;
+  string supi = 2;
+  string pei = 3;
+  string amf_instance_id = 4;
+  SessionStatus status = 5;
+  LcsQoS lcs_qos = 6;
+  LcsClientType lcs_client_type = 7;
+  int64 started_at_unix_ms = 8;
+  int64 expires_at_unix_ms = 9;
+  string error = 10;
+}
+
+message SessionUpdateRequest {
+  string session_id = 1;
+  SessionStatus new_status = 2;
+}
+
+message SessionUpdateResponse {
+  bool success = 1;
+}
+
+message SessionDeleteRequest {
+  string session_id = 1;
+}
+
+message SessionDeleteResponse {
+  bool success = 1;
+}
+
+// Method selection messages
+message MethodSelectionRequest {
+  UeCapabilities ue_capabilities = 1;
+  LcsQoS lcs_qos = 2;
+  bool indoor_hint = 3;
+}
+
+message MethodSelectionResponse {
+  PositioningMethod selected_method = 1;
+  repeated PositioningMethod fallback_methods = 2;
+  double estimated_accuracy_meters = 3;
+  int32 estimated_response_ms = 4;
+}
+
+// QoS evaluation messages
+message QosEvaluateRequest {
+  LcsQoS requested_qos = 1;
+  PositionEstimate achieved_estimate = 2;
+}
+
+message QosEvaluateResponse {
+  AccuracyFulfilmentIndicator indicator = 1;
+  bool response_time_breached = 2;
+}
+
+// LocationRequestService handles location determination requests
+service LocationRequestService {
+  rpc DetermineLocation (LocationRequestMsg) returns (LocationResponseMsg);
+  rpc CancelLocation (CancelRequest) returns (CancelResponse);
+  rpc GetSessionStatus (SessionStatusRequest) returns (SessionStatusResponse);
+}
+
+// SessionManagerService handles LCS session lifecycle
+service SessionManagerService {
+  rpc CreateSession (SessionCreateRequest) returns (SessionCreateResponse);
+  rpc GetSession (SessionGetRequest) returns (SessionGetResponse);
+  rpc UpdateSessionStatus (SessionUpdateRequest) returns (SessionUpdateResponse);
+  rpc DeleteSession (SessionDeleteRequest) returns (SessionDeleteResponse);
+}
+
+// MethodSelectorService selects optimal positioning method
+service MethodSelectorService {
+  rpc SelectMethod (MethodSelectionRequest) returns (MethodSelectionResponse);
+}
+
+// QosManagerService evaluates QoS fulfilment
+service QosManagerService {
+  rpc EvaluateQoS (QosEvaluateRequest) returns (QosEvaluateResponse);
+}

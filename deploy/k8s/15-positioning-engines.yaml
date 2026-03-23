@@ -1,0 +1,260 @@
+---
+# GNSS Engine (MS-06)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gnss-engine
+  namespace: lmf
+  labels:
+    app: gnss-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gnss-engine
+  template:
+    metadata:
+      labels:
+        app: gnss-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2115"
+    spec:
+      containers:
+      - name: gnss-engine
+        image: lmf/gnss-engine:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9005
+          name: grpc
+        - containerPort: 2115
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gnss-engine
+  namespace: lmf
+spec:
+  selector:
+    app: gnss-engine
+  ports:
+  - name: grpc
+    port: 9005
+    targetPort: 9005
+  type: ClusterIP
+---
+# TDOA Engine (MS-07)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tdoa-engine
+  namespace: lmf
+  labels:
+    app: tdoa-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tdoa-engine
+  template:
+    metadata:
+      labels:
+        app: tdoa-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2116"
+    spec:
+      containers:
+      - name: tdoa-engine
+        image: lmf/tdoa-engine:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9006
+          name: grpc
+        - containerPort: 2116
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "150m"
+            memory: "256Mi"
+          limits:
+            cpu: "800m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tdoa-engine
+  namespace: lmf
+spec:
+  selector:
+    app: tdoa-engine
+  ports:
+  - name: grpc
+    port: 9006
+    targetPort: 9006
+  type: ClusterIP
+---
+# E-CID Engine (MS-08)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecid-engine
+  namespace: lmf
+  labels:
+    app: ecid-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecid-engine
+  template:
+    metadata:
+      labels:
+        app: ecid-engine
+    spec:
+      containers:
+      - name: ecid-engine
+        image: lmf/ecid-engine:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9007
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecid-engine
+  namespace: lmf
+spec:
+  selector:
+    app: ecid-engine
+  ports:
+  - name: grpc
+    port: 9007
+    targetPort: 9007
+  type: ClusterIP
+---
+# RTT Engine (MS-09)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rtt-engine
+  namespace: lmf
+  labels:
+    app: rtt-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rtt-engine
+  template:
+    metadata:
+      labels:
+        app: rtt-engine
+    spec:
+      containers:
+      - name: rtt-engine
+        image: lmf/rtt-engine:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9008
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rtt-engine
+  namespace: lmf
+spec:
+  selector:
+    app: rtt-engine
+  ports:
+  - name: grpc
+    port: 9008
+    targetPort: 9008
+  type: ClusterIP
+---
+# Fusion Engine (MS-10)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fusion-engine
+  namespace: lmf
+  labels:
+    app: fusion-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fusion-engine
+  template:
+    metadata:
+      labels:
+        app: fusion-engine
+    spec:
+      containers:
+      - name: fusion-engine
+        image: lmf/fusion-engine:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9009
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fusion-engine
+  namespace: lmf
+spec:
+  selector:
+    app: fusion-engine
+  ports:
+  - name: grpc
+    port: 9009
+    targetPort: 9009
+  type: ClusterIP

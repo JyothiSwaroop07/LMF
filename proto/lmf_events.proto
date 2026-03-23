@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package lmf.v1;
+
+option go_package = "github.com/5g-lmf/common/pb;pb";
+
+import "lmf_common.proto";
+
+// EventType defines the category of location event
+enum EventTypeProto {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_PERIODIC = 1;
+  EVENT_TYPE_AREA = 2;
+  EVENT_TYPE_MOTION = 3;
+  EVENT_TYPE_MAX_INTERVAL = 4;
+  EVENT_TYPE_CANCELLATION = 5;
+}
+
+// AreaType defines what crossing triggers the event
+enum AreaTypeProto {
+  AREA_TYPE_UNSPECIFIED = 0;
+  AREA_TYPE_ENTER = 1;
+  AREA_TYPE_LEAVE = 2;
+  AREA_TYPE_WITHIN = 3;
+}
+
+// PrivacyClass per TS 23.273 §8
+enum PrivacyClass {
+  PRIVACY_CLASS_UNSPECIFIED = 0;
+  PRIVACY_CLASS_A = 1;  // No privacy restriction (emergency)
+  PRIVACY_CLASS_B = 2;  // Notify only
+  PRIVACY_CLASS_C = 3;  // Notify + verify
+  PRIVACY_CLASS_D = 4;  // Blocked
+}
+
+// LatLonMsg is a geographic coordinate
+message LatLonMsg {
+  double lat = 1;
+  double lon = 2;
+}
+
+// GeographicArea defines a polygon or circle
+message GeographicArea {
+  string shape = 1;
+  repeated LatLonMsg points = 2;  // For polygon
+  LatLonMsg center = 3;           // For circle
+  double radius_meters = 4;       // For circle
+}
+
+// AreaEventInfoMsg defines an area trigger
+message AreaEventInfoMsg {
+  AreaTypeProto area_type = 1;
+  repeated GeographicArea areas = 2;
+}
+
+// EventSubscriptionRequest to create a subscription
+message EventSubscriptionRequest {
+  string supi = 1;
+  EventTypeProto event_type = 2;
+  string notif_uri = 3;
+  string notif_id = 4;
+  AreaEventInfoMsg area_event_info = 5;
+  LcsQoS lcs_qos = 6;
+  int32 periodic_interval_seconds = 7;
+  int32 max_reports = 8;
+  int64 monitoring_expiry_unix_ms = 9;
+  double motion_threshold_meters = 10;
+}
+
+// EventSubscriptionResponse confirms subscription
+message EventSubscriptionResponse {
+  string subscription_id = 1;
+  string error = 2;
+}
+
+// UnsubscribeRequest to cancel a subscription
+message UnsubscribeRequest {
+  string subscription_id = 1;
+}
+
+// UnsubscribeResponse confirms cancellation
+message UnsubscribeResponse {
+  bool success = 1;
+}
+
+// EventNotification is sent to the subscriber callback
+message EventNotification {
+  string subscription_id = 1;
+  string supi = 2;
+  EventTypeProto event_type = 3;
+  LocationEstimate location_estimate = 4;
+  int64 timestamp_unix_ms = 5;
+  int32 report_count = 6;
+}
+
+// LocationUpdateMsg sent internally when a position is determined
+message LocationUpdateMsg {
+  string supi = 1;
+  LocationEstimate location_estimate = 2;
+  int64 timestamp_unix_ms = 3;
+}
+
+// Privacy check messages
+message PrivacyCheckRequest {
+  string supi = 1;
+  LcsClientType lcs_client_type = 2;
+  string session_id = 3;
+}
+
+message PrivacyCheckResponse {
+  bool allowed = 1;
+  PrivacyClass privacy_class = 2;
+  bool notification_sent = 3;
+  string denial_reason = 4;
+}
+
+// Token validation messages
+message TokenValidateRequest {
+  string token = 1;
+  string required_scope = 2;
+}
+
+message TokenValidateResponse {
+  bool valid = 1;
+  string subject = 2;
+  string plmn_id = 3;
+  string error = 4;
+}
+
+// Service definitions
+service EventManagerService {
+  rpc Subscribe (EventSubscriptionRequest) returns (EventSubscriptionResponse);
+  rpc Unsubscribe (UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc ProcessLocationUpdate (LocationUpdateMsg) returns (UnsubscribeResponse);
+}
+
+service PrivacyAuthService {
+  rpc CheckPrivacy (PrivacyCheckRequest) returns (PrivacyCheckResponse);
+  rpc ValidateToken (TokenValidateRequest) returns (TokenValidateResponse);
+}

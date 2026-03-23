@@ -1,0 +1,207 @@
+---
+# Assistance Data (MS-11)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: assistance-data
+  namespace: lmf
+  labels:
+    app: assistance-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: assistance-data
+  template:
+    metadata:
+      labels:
+        app: assistance-data
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2120"
+    spec:
+      containers:
+      - name: assistance-data
+        image: lmf/assistance-data:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9010
+          name: grpc
+        - containerPort: 2120
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: assistance-data
+  namespace: lmf
+spec:
+  selector:
+    app: assistance-data
+  ports:
+  - name: grpc
+    port: 9010
+    targetPort: 9010
+  type: ClusterIP
+---
+# Event Manager (MS-12)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-manager
+  namespace: lmf
+  labels:
+    app: event-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: event-manager
+  template:
+    metadata:
+      labels:
+        app: event-manager
+    spec:
+      containers:
+      - name: event-manager
+        image: lmf/event-manager:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9011
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-manager
+  namespace: lmf
+spec:
+  selector:
+    app: event-manager
+  ports:
+  - name: grpc
+    port: 9011
+    targetPort: 9011
+  type: ClusterIP
+---
+# Privacy Auth (MS-13)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: privacy-auth
+  namespace: lmf
+  labels:
+    app: privacy-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: privacy-auth
+  template:
+    metadata:
+      labels:
+        app: privacy-auth
+    spec:
+      containers:
+      - name: privacy-auth
+        image: lmf/privacy-auth:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9012
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        - secretRef:
+            name: lmf-secrets
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "400m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: privacy-auth
+  namespace: lmf
+spec:
+  selector:
+    app: privacy-auth
+  ports:
+  - name: grpc
+    port: 9012
+    targetPort: 9012
+  type: ClusterIP
+---
+# QoS Manager (MS-14)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qos-manager
+  namespace: lmf
+  labels:
+    app: qos-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qos-manager
+  template:
+    metadata:
+      labels:
+        app: qos-manager
+    spec:
+      containers:
+      - name: qos-manager
+        image: lmf/qos-manager:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 9013
+          name: grpc
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qos-manager
+  namespace: lmf
+spec:
+  selector:
+    app: qos-manager
+  ports:
+  - name: grpc
+    port: 9013
+    targetPort: 9013
+  type: ClusterIP

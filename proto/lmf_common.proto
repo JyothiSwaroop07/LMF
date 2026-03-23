@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package lmf.v1;
+
+option go_package = "github.com/5g-lmf/common/pb;pb";
+
+// PositioningMethod identifies the UE positioning technique
+enum PositioningMethod {
+  POSITIONING_METHOD_UNSPECIFIED = 0;
+  POSITIONING_METHOD_AUTO = 1;
+  POSITIONING_METHOD_A_GNSS = 2;
+  POSITIONING_METHOD_DL_TDOA = 3;
+  POSITIONING_METHOD_OTDOA = 4;
+  POSITIONING_METHOD_NR_ECID = 5;
+  POSITIONING_METHOD_NR_MULTI_RTT = 6;
+  POSITIONING_METHOD_WLAN = 7;
+  POSITIONING_METHOD_BLUETOOTH = 8;
+  POSITIONING_METHOD_BAROMETRIC = 9;
+  POSITIONING_METHOD_CELL_ID = 10;
+}
+
+// ResponseTimeClass defines QoS response time requirements
+enum ResponseTimeClass {
+  RESPONSE_TIME_UNSPECIFIED = 0;
+  RESPONSE_TIME_NO_DELAY = 1;
+  RESPONSE_TIME_LOW_DELAY = 2;
+  RESPONSE_TIME_DELAY_TOLERANT = 3;
+  RESPONSE_TIME_DELAY_TOLERANT_V2 = 4;
+}
+
+// AccuracyFulfilmentIndicator indicates whether QoS was met
+enum AccuracyFulfilmentIndicator {
+  ACCURACY_FULFILMENT_UNSPECIFIED = 0;
+  ACCURACY_FULFILMENT_REQUESTED_FULFILLED = 1;
+  ACCURACY_FULFILMENT_ATTEMPTED_FAILED = 2;
+  ACCURACY_FULFILMENT_NOT_ATTEMPTED = 3;
+}
+
+// SessionStatus tracks LCS session lifecycle
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_INIT = 1;
+  SESSION_STATUS_PROCESSING = 2;
+  SESSION_STATUS_AWAITING_MEASUREMENTS = 3;
+  SESSION_STATUS_COMPUTING = 4;
+  SESSION_STATUS_COMPLETED = 5;
+  SESSION_STATUS_FAILED = 6;
+  SESSION_STATUS_CANCELLED = 7;
+}
+
+// LcsClientType identifies the LCS requesting entity
+enum LcsClientType {
+  LCS_CLIENT_TYPE_UNSPECIFIED = 0;
+  LCS_CLIENT_TYPE_EMERGENCY_SERVICES = 1;
+  LCS_CLIENT_TYPE_VALUE_ADDED = 2;
+  LCS_CLIENT_TYPE_PLMN_OPERATOR = 3;
+  LCS_CLIENT_TYPE_LAWFUL_INTERCEPT = 4;
+  LCS_CLIENT_TYPE_GMLC = 5;
+}
+
+// PlmnId represents a PLMN identifier
+message PlmnId {
+  string mcc = 1;
+  string mnc = 2;
+}
+
+// LcsQoS defines location QoS requirements
+message LcsQoS {
+  int32 horizontal_accuracy_meters = 1;
+  int32 vertical_accuracy_meters = 2;
+  bool vertical_coord_required = 3;
+  ResponseTimeClass response_time = 4;
+  bool velocity_requested = 5;
+  int32 confidence_percent = 6;
+}
+
+// LocationEstimate carries a UE position result
+message LocationEstimate {
+  string shape = 1;
+  double latitude = 2;
+  double longitude = 3;
+  double altitude = 4;
+  double horizontal_uncertainty = 5;
+  double uncertainty_semi_major = 6;
+  double uncertainty_semi_minor = 7;
+  int32 orientation_major_axis = 8;
+  double vertical_uncertainty = 9;
+  int32 confidence = 10;
+  int64 timestamp_unix_ms = 11;
+}
+
+// VelocityEstimate carries UE velocity
+message VelocityEstimate {
+  string velocity_type = 1;
+  double h_speed_mps = 2;
+  double bearing_degrees = 3;
+  double v_speed_mps = 4;
+  string v_direction = 5;
+  double h_uncertainty_mps = 6;
+  double v_uncertainty_mps = 7;
+}
+
+// PositionEstimate is the internal computed position
+message PositionEstimate {
+  double latitude = 1;
+  double longitude = 2;
+  double altitude = 3;
+  double sigma_lat = 4;
+  double sigma_lon = 5;
+  double sigma_alt = 6;
+  int32 confidence = 7;
+  PositioningMethod method = 8;
+  int64 timestamp_unix_ms = 9;
+}
+
+// UeCapabilities holds UE positioning capabilities
+message UeCapabilities {
+  bool gnss_supported = 1;
+  repeated string gnss_constellations = 2;
+  bool dl_tdoa_supported = 3;
+  bool multi_rtt_supported = 4;
+  bool wlan_supported = 5;
+  bool bluetooth_supported = 6;
+  bool barometric_supported = 7;
+  bool ecid_supported = 8;
+}
+
+// PrsConfiguration holds NR PRS configuration per TS 38.305
+message PrsConfiguration {
+  int32 prs_id = 1;
+  int32 nrof_prs_resources = 2;
+  int32 prs_bandwidth_mhz = 3;
+  int32 prs_subcarrier_spacing = 4;
+  int32 prs_comb_size = 5;
+  int32 dl_prs_num_symbols = 6;
+  int32 prs_occasions_duration = 7;
+}
+
+// CellGeometry holds physical cell location
+message CellGeometry {
+  string nci = 1;
+  string plmn_mcc = 2;
+  string plmn_mnc = 3;
+  double latitude = 4;
+  double longitude = 5;
+  double altitude = 6;
+  int32 antenna_sector_azimuth = 7;
+  int32 antenna_sector_width = 8;
+  int64 sync_offset_ns = 9;
+}
+ 

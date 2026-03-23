@@ -1,0 +1,182 @@
+global:
+  imageTag: "latest"
+  imagePullPolicy: "IfNotPresent"
+  namespace: lmf
+
+lmf:
+  imageRegistry: "lmf"
+
+# Service-level replica and resource overrides
+services:
+  sbiGateway:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    service:
+      type: ClusterIP
+      httpPort: 8000
+      grpcPort: 9000
+      metricsPort: 2110
+
+  locationRequest:
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+    grpcPort: 9001
+    metricsPort: 2111
+
+  sessionManager:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    grpcPort: 9002
+    metricsPort: 2112
+
+  protocolHandler:
+    replicas: 1
+    resources:
+      requests: { cpu: "150m", memory: "128Mi" }
+      limits:   { cpu: "500m", memory: "512Mi" }
+    grpcPort: 9003
+
+  methodSelector:
+    replicas: 1
+    resources:
+      requests: { cpu: "50m", memory: "64Mi" }
+      limits:   { cpu: "200m", memory: "256Mi" }
+    grpcPort: 9004
+
+  gnssEngine:
+    replicas: 1
+    resources:
+      requests: { cpu: "200m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+    grpcPort: 9005
+    metricsPort: 2115
+
+  tdoaEngine:
+    replicas: 1
+    resources:
+      requests: { cpu: "150m", memory: "256Mi" }
+      limits:   { cpu: "800m", memory: "512Mi" }
+    grpcPort: 9006
+    metricsPort: 2116
+
+  ecidEngine:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "400m", memory: "256Mi" }
+    grpcPort: 9007
+
+  rttEngine:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "400m", memory: "256Mi" }
+    grpcPort: 9008
+
+  fusionEngine:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "400m", memory: "512Mi" }
+    grpcPort: 9009
+
+  assistanceData:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "500m", memory: "1Gi" }
+    grpcPort: 9010
+
+  eventManager:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "400m", memory: "512Mi" }
+    grpcPort: 9011
+
+  privacyAuth:
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "128Mi" }
+      limits:   { cpu: "400m", memory: "256Mi" }
+    grpcPort: 9012
+
+  qosManager:
+    replicas: 1
+    resources:
+      requests: { cpu: "50m", memory: "64Mi" }
+      limits:   { cpu: "200m", memory: "128Mi" }
+    grpcPort: 9013
+
+# External 5GC service endpoints
+externalServices:
+  amf:
+    baseUrl: "http://amf-service.core.svc.cluster.local:8080"
+  udm:
+    baseUrl: "http://udm-service.core.svc.cluster.local:8080"
+  nrf:
+    baseUrl: "http://nrf-service.core.svc.cluster.local:8080"
+
+# Redis (Bitnami chart subchart)
+redis:
+  enabled: true
+  architecture: standalone
+
+  global:
+    imageRegistry: ""
+
+  image:
+    registry: "docker.io"
+    repository: "redis"
+    tag: "7-alpine"
+
+  auth:
+    enabled: false
+
+# Kafka (Bitnami chart subchart)
+kafka:
+  enabled: true
+
+  global:
+    imageRegistry: ""
+
+  image:
+    registry: "docker.io"
+    repository: "apache/kafka"
+    tag: "3.7.0"
+
+  replicaCount: 1
+  heapOpts: "-Xmx512m -Xms512m"
+
+# Cassandra (deployed separately; provide endpoints here)
+cassandra:
+  hosts:
+    - "cassandra-0.cassandra:9042"
+    - "cassandra-1.cassandra:9042"
+    - "cassandra-2.cassandra:9042"
+  keyspace: "lmf_audit"
+
+# Istio sidecar injection
+istio:
+  enabled: true
+
+# Monitoring
+monitoring:
+  enabled: true
+  serviceMonitor: true
+  grafanaDashboards: true
+
+# Pod Disruption Budgets
+pdb:
+  enabled: true
+  minAvailable: 1
+
+log:
+  level: "info"
+  format: "json"

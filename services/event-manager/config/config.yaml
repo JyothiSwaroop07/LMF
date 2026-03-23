@@ -1,0 +1,23 @@
+server:
+  port: 8011
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9011"
+  maxRecvMsgSize: 4194304
+
+redis:
+  addresses:
+    - "redis-cluster.lmf.svc.cluster.local:6379"
+  password: ""
+  db: 0
+
+metrics:
+  port: 2121
+
+log:
+  level: "info"
+  format: "json"
+
+eventScheduler:
+  intervalSeconds: 10

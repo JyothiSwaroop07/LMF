@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package lmf.v1;
+
+option go_package = "github.com/5g-lmf/common/pb;pb";
+
+import "lmf_common.proto";
+
+// GNSS Assistance Data messages
+message GnssAssistanceRequest {
+  repeated string constellations = 1;
+  repeated string requested_types = 2;  // GnssAssistanceDataType values
+}
+
+message GnssEphemerisMsg {
+  string constellation = 1;
+  int32 svid = 2;
+  int64 toc = 3;
+  int64 toe = 4;
+  double sqrt_a = 5;
+  double eccentricity = 6;
+  double inclination = 7;
+  double raan = 8;
+  double arg_perigee = 9;
+  double mean_anomaly = 10;
+  double af0 = 11;
+  double af1 = 12;
+  double af2 = 13;
+  double ura = 14;
+  int64 valid_until_unix_ms = 15;
+}
+
+message GnssAssistanceResponse {
+  int64 reference_time_unix_ms = 1;
+  repeated GnssEphemerisMsg ephemerides = 2;
+  repeated double iono_alpha = 3;
+  repeated double iono_beta = 4;
+  int64 valid_until_unix_ms = 5;
+}
+
+// GNSS positioning computation
+message GnssSignalMeasurementMsg {
+  int32 svid = 1;
+  string constellation = 2;
+  double cnr = 3;
+  double pseudorange = 4;
+  double doppler = 5;
+}
+
+message GnssComputeRequest {
+  repeated GnssSignalMeasurementMsg signals = 1;
+  repeated GnssEphemerisMsg ephemerides = 2;
+  int64 measurement_time_unix_ms = 3;
+}
+
+message GnssComputeResponse {
+  PositionEstimate estimate = 1;
+  string error = 2;
+}
+
+// DL-TDOA messages
+message RstdMeasurementMsg {
+  string ref_cell_nci = 1;
+  string neighbor_cell_nci = 2;
+  double rstd = 3;           // Ts units
+  double rstd_uncertainty = 4;
+}
+
+message DlTdoaRequest {
+  string ref_gnb = 1;
+  repeated RstdMeasurementMsg measurements = 2;
+  repeated CellGeometry cell_geometry = 3;
+  int64 measurement_time_unix_ms = 4;
+}
+
+message DlTdoaResponse {
+  PositionEstimate estimate = 1;
+  string error = 2;
+}
+
+// E-CID messages
+message RsrpEntryMsg {
+  string cell_nci = 1;
+  double rsrp = 2;
+  double rsrq = 3;
+}
+
+message EcidRequest {
+  string serving_cell_nci = 1;
+  int32 timing_advance = 2;
+  double ue_rx_tx_diff = 3;
+  double gnb_rx_tx_diff = 4;
+  repeated RsrpEntryMsg rsrp_measurements = 5;
+  CellGeometry serving_cell_geometry = 6;
+  repeated CellGeometry neighbor_cell_geometry = 7;
+}
+
+message EcidResponse {
+  PositionEstimate estimate = 1;
+  string error = 2;
+}
+
+// Multi-RTT messages
+message RttEntryMsg {
+  string cell_nci = 1;
+  double ue_rx_tx = 2;
+  double gnb_rx_tx = 3;
+}
+
+message MultiRttRequest {
+  repeated RttEntryMsg entries = 1;
+  repeated CellGeometry cell_geometry = 2;
+  int64 measurement_time_unix_ms = 3;
+}
+
+message MultiRttResponse {
+  PositionEstimate estimate = 1;
+  string error = 2;
+}
+
+// Fusion messages
+message FusionRequest {
+  string session_id = 1;
+  repeated PositionEstimate estimates = 2;
+}
+
+message FusionResponse {
+  PositionEstimate fused_estimate = 1;
+  int32 quality_index = 2;
+  string error = 3;
+}
+
+// Service definitions
+service GnssEngineService {
+  rpc GetAssistanceData (GnssAssistanceRequest) returns (GnssAssistanceResponse);
+  rpc ComputePosition (GnssComputeRequest) returns (GnssComputeResponse);
+}
+
+service TdoaEngineService {
+  rpc ComputePosition (DlTdoaRequest) returns (DlTdoaResponse);
+}
+
+service EcidEngineService {
+  rpc ComputePosition (EcidRequest) returns (EcidResponse);
+}
+
+service RttEngineService {
+  rpc ComputePosition (MultiRttRequest) returns (MultiRttResponse);
+}
+
+service FusionEngineService {
+  rpc FusePositions (FusionRequest) returns (FusionResponse);
+}

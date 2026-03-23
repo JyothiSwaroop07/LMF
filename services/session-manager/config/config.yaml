@@ -1,0 +1,18 @@
+grpc:
+  port: 8002
+
+redis:
+  addresses:
+    - "redis-cluster:6379"
+  password: ""
+  db: 0
+  pool_size: 20
+  max_retries: 3
+
+metrics:
+  port: 9092
+  path: "/metrics"
+
+log:
+  level: "info"
+  format: "json"

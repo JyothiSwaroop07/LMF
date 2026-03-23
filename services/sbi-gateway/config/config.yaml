@@ -1,0 +1,25 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  tls_cert: ""    
+  tls_key: ""     
+services:
+  locationRequest: "location-request.lmf.svc.cluster.local:9001"
+  eventManager: "event-manager.lmf.svc.cluster.local:9011"
+  sessionManager: "session-manager.lmf.svc.cluster.local:9002"
+  methodSelector: "method-selector.lmf.svc.cluster.local:9004"
+  protocolHandler: "protocol-handler.lmf.svc.cluster.local:9003"
+  gnssEngine: "gnss-engine.lmf.svc.cluster.local:9005"
+  tdoaEngine: "tdoa-engine.lmf.svc.cluster.local:9006"
+  ecidEngine: "ecid-engine.lmf.svc.cluster.local:9007"
+  rttEngine: "rtt-engine.lmf.svc.cluster.local:9008"
+  fusionEngine: "fusion-engine.lmf.svc.cluster.local:9009"
+  assistanceData: "assistance-data.lmf.svc.cluster.local:9010"
+  qosManager: "qos-manager.lmf.svc.cluster.local:9013"
+  privacyAuth: "privacy-auth.lmf.svc.cluster.local:9012"
+metrics:
+  port: 9090
+  path: "/metrics"
+log:
+  level: "info"
+  format: "json"

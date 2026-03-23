@@ -1,0 +1,103 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbi-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "lmf.labels" . | nindent 4 }}
+    app: sbi-gateway
+spec:
+  replicas: {{ .Values.services.sbiGateway.replicas }}
+  selector:
+    matchLabels:
+      app: sbi-gateway
+  template:
+    metadata:
+      labels:
+        app: sbi-gateway
+    spec:
+      containers:
+      - name: sbi-gateway
+        image: {{ include "lmf.image" (dict "name" "sbi-gateway" "Values" .Values) }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ .Values.services.sbiGateway.service.httpPort }}
+          name: http
+        - containerPort: {{ .Values.services.sbiGateway.service.metricsPort }}
+          name: metrics
+        env:
+          {{- include "lmf.commonEnv" . | nindent 10 }}
+        {{- include "lmf.resources" .Values.services.sbiGateway | nindent 8 }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: {{ .Values.services.sbiGateway.service.httpPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: {{ .Values.services.sbiGateway.service.httpPort }}
+          initialDelaySeconds: 15
+          periodSeconds: 20
+      volumes:
+      - name: config
+        configMap:
+          name: sbi-gateway-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sbi-gateway-config
+  namespace: {{ .Values.global.namespace }}
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: {{ .Values.services.sbiGateway.service.httpPort }}
+      tls_cert: ""
+      tls_key: ""
+    services:
+      locationRequest: "lmf-location-request:8001"
+      eventManager: "lmf-event-manager:8011"
+      sessionManager: "lmf-session-manager:8002"
+      methodSelector: "lmf-method-selector:8004"
+      protocolHandler: "lmf-protocol-handler:8003"
+      gnssEngine: "lmf-gnss-engine:8005"
+      tdoaEngine: "lmf-tdoa-engine:8006"
+      ecidEngine: "lmf-ecid-engine:8007"
+      rttEngine: "lmf-rtt-engine:8008"
+      fusionEngine: "lmf-fusion-engine:8009"
+      assistanceData: "lmf-assistance-data:8010"
+      qosManager: "lmf-qos-manager:8013"
+      privacyAuth: "lmf-privacy-auth:8012"
+    metrics:
+      port: 9090
+      path: "/metrics"
+    log:
+      level: "info"
+      format: "json"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sbi-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "lmf.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: sbi-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: {{ .Values.services.sbiGateway.service.httpPort }}
+  - name: metrics
+    port: {{ .Values.services.sbiGateway.service.metricsPort }}
+    targetPort: {{ .Values.services.sbiGateway.service.metricsPort }}
+  type: {{ .Values.services.sbiGateway.service.type }}

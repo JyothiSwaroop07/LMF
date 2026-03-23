@@ -1,0 +1,100 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbi-gateway
+  namespace: lmf
+  labels:
+    app: sbi-gateway
+    version: v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbi-gateway
+  template:
+    metadata:
+      labels:
+        app: sbi-gateway
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2110"
+    spec:
+      containers:
+      - name: sbi-gateway
+        image: lmf/sbi-gateway:latest
+        imagePullPolicy: Never   # use local image
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 9000
+          name: grpc
+        - containerPort: 2110
+          name: metrics
+        envFrom:
+        - configMapRef:
+            name: lmf-common-config
+        - secretRef:
+            name: lmf-secrets
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health/ready  # use the implemented readiness endpoint
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health/live # use the implemented liveness endpoint
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sbi-gateway
+  namespace: lmf
+  labels:
+    app: sbi-gateway
+spec:
+  selector:
+    app: sbi-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+  - name: grpc
+    port: 9000
+    targetPort: 9000
+  - name: metrics
+    port: 2110
+    targetPort: 2110
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sbi-gateway
+  namespace: lmf
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sbi-gateway
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70

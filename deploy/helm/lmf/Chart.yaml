@@ -1,0 +1,26 @@
+apiVersion: v2
+name: lmf
+description: 5G Location Management Function — 14-microservice deployment chart
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - 5g
+  - lmf
+  - positioning
+  - 3gpp
+# home: https://github.com/5g-lmf/lmf
+# sources:
+#   - https://github.com/5g-lmf/lmf
+# maintainers:
+#   - name: lmf-team
+#     email: lmf@example.com
+dependencies:
+  - name: redis
+    version: "19.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+  - name: kafka
+    version: "26.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: kafka.enabled

@@ -1,0 +1,17 @@
+server:
+  port: 8003
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9003"
+  maxRecvMsgSize: 8388608
+
+amf:
+  baseUrl: "http://amf-service:8080"
+
+metrics:
+  port: 2113
+
+log:
+  level: "info"
+  format: "json"

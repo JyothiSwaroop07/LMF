@@ -1,0 +1,63 @@
+---
+# Prometheus ServiceMonitor for all LMF services
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lmf-services
+  namespace: lmf
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: lmf
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+---
+# Grafana Dashboard ConfigMap (references external dashboard JSON)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lmf-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  lmf-overview.json: |
+    {
+      "title": "5G LMF Overview",
+      "uid": "lmf-overview",
+      "panels": [
+        {
+          "title": "Location Requests/s",
+          "type": "graph",
+          "targets": [{"expr": "rate(lmf_location_requests_total[1m])"}]
+        },
+        {
+          "title": "P50/P95/P99 Positioning Latency (ms)",
+          "type": "graph",
+          "targets": [
+            {"expr": "histogram_quantile(0.5, rate(lmf_positioning_duration_seconds_bucket[5m])) * 1000"},
+            {"expr": "histogram_quantile(0.95, rate(lmf_positioning_duration_seconds_bucket[5m])) * 1000"},
+            {"expr": "histogram_quantile(0.99, rate(lmf_positioning_duration_seconds_bucket[5m])) * 1000"}
+          ]
+        },
+        {
+          "title": "Positioning Accuracy (m) by Method",
+          "type": "graph",
+          "targets": [{"expr": "histogram_quantile(0.5, rate(lmf_positioning_accuracy_meters_bucket[5m]))"}]
+        },
+        {
+          "title": "Active LCS Sessions",
+          "type": "stat",
+          "targets": [{"expr": "lmf_active_sessions"}]
+        },
+        {
+          "title": "Privacy Check Outcomes",
+          "type": "piechart",
+          "targets": [{"expr": "lmf_privacy_checks_total"}]
+        }
+      ]
+    }

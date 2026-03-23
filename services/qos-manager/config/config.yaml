@@ -1,0 +1,14 @@
+server:
+  port: 8013
+  host: "0.0.0.0"
+
+grpc:
+  addr: ":9013"
+  maxRecvMsgSize: 4194304
+
+metrics:
+  port: 2123
+
+log:
+  level: "info"
+  format: "json"
