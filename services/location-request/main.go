@@ -55,7 +55,7 @@ func main() {
 	// Build orchestrator with no-op adapter stubs (replace with real gRPC adapters)
 	deps := orchestrator.Dependencies{
 		Privacy:         &adapters.NoopPrivacy{},
-		SessionMgr:      &adapters.NoopSession{},
+		SessionMgr:      adapters.NewGRPCSessionAdapter(clients.SessionManager, logger),
 		MethodSelector:  &adapters.NoopMethodSelector{},
 		ProtocolHandler: &adapters.NoopProtocol{},
 		GnssEngine:      &adapters.NoopEngine{},

@@ -30,7 +30,7 @@ func (s *LocationServer) DetermineLocation(ctx context.Context, req *pb.Location
 		zap.String("supi", req.Supi),
 		zap.String("sessionId", req.SessionId),
 	)
-	logger.Info("location request received at location-request service: DetermineLocation")
+	logger.Info("location request received at location-request service: DetermineLocation") // swaroop added this log to confirm that the request is reaching the location-request service and the DetermineLocation handler is being invoked.
 
 	session := types.LcsSession{
 		SessionID: req.SessionId,
@@ -41,7 +41,7 @@ func (s *LocationServer) DetermineLocation(ctx context.Context, req *pb.Location
 
 	estimate, err := s.orch.DetermineLocation(ctx, session)
 	if err != nil {
-		middleware.LocationRequestsTotal.WithLabelValues("error").Inc()
+		middleware.LocationRequestsTotal.WithLabelValues("unknown", "error", "unknown").Inc()
 		logger.Error("location request failed", zap.Error(err))
 		return nil, fmt.Errorf("determine location: %w", err)
 	}

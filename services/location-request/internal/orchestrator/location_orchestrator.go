@@ -103,13 +103,15 @@ func (o *LocationOrchestrator) DetermineLocation(ctx context.Context, session ty
 		zap.String("sessionId", session.SessionID),
 	)
 
+	logger.Info("starting location determination flow from location-request:orchestrator.DetermineLocation")
+
 	// Step 1: Privacy check
 	allowed, err := o.deps.Privacy.CheckPrivacy(ctx, session.Supi, session.SessionID, session.LcsClientType)
 	if err != nil {
 		return nil, fmt.Errorf("privacy check: %w", err)
 	}
 	if !allowed {
-		middleware.LocationRequestsTotal.WithLabelValues("denied").Inc()
+		middleware.LocationRequestsTotal.WithLabelValues("unknown", "denied", string(session.LcsClientType)).Inc()
 		return nil, fmt.Errorf("location request denied by privacy policy")
 	}
 	logger.Info("privacy check passed")
@@ -191,7 +193,7 @@ func (o *LocationOrchestrator) DetermineLocation(ctx context.Context, session ty
 		uncertMeters = lonUncert
 	}
 
-	middleware.LocationRequestsTotal.WithLabelValues("success").Inc()
+	middleware.LocationRequestsTotal.WithLabelValues(string(selResult.SelectedMethod), "success", string(session.LcsClientType)).Inc()
 	middleware.LocationAccuracyAchieved.WithLabelValues(string(selResult.SelectedMethod)).Observe(uncertMeters)
 
 	return &types.LocationEstimate{

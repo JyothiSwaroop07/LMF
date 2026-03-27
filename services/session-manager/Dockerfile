@@ -29,9 +29,10 @@ WORKDIR /app
 
 COPY --from=builder /app/session-manager .
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /workspace/services/session-manager/config/ ./config/
 
 USER lmf
 
 EXPOSE 8002 9002 2112
 
-ENTRYPOINT ["/session-manager"]
+ENTRYPOINT ["/app/session-manager"]

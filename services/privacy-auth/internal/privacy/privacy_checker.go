@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/5g-lmf/common/types"
 	"github.com/5g-lmf/common/middleware"
+	"github.com/5g-lmf/common/types"
 	"go.uber.org/zap"
 )
 
@@ -47,8 +47,8 @@ type PrivacyCheckResponse struct {
 
 // PrivacyProfile holds a UE's privacy configuration
 type PrivacyProfile struct {
-	PrivacyClass    PrivacyClass
-	AllowedClients  []string
+	PrivacyClass   PrivacyClass
+	AllowedClients []string
 }
 
 // UDMClient fetches privacy profiles from UDM
