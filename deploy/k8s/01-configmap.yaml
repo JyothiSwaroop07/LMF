@@ -13,7 +13,10 @@ data:
   CASSANDRA_HOSTS: "cassandra-0.cassandra:9042,cassandra-1.cassandra:9042,cassandra-2.cassandra:9042"
   AMF_BASE_URL: "http://amf-service.core.svc.cluster.local:8080"
   UDM_BASE_URL: "http://udm-service.core.svc.cluster.local:8080"
-  NRF_BASE_URL: "http://nrf-service.core.svc.cluster.local:8080"
+
+
+#Updated NRF BASE URL to my open5gs NRF running in my VM
+  NRF_BASE_URL: "http://192.168.138.23:7777"
 
 
   #MY CHANGES - update service endpoints to match new service names and ports
@@ -32,5 +35,12 @@ data:
   LMF_SERVICES_EVENTMANAGER:    "event-manager.lmf.svc.cluster.local:9011"
 
   # Server config
+  LMF_SBI_IPV4: "172.21.0.2" # this should match the ClusterIP of the sbi-gateway service
+  LMF_SBI_PORT: "3000" # this should match the NodePort of the sbi-gateway service
   LMF_SERVER_PORT: "8000"
   LMF_GRPC_PORT:   "9000"
+
+
+  LMF_NF_INSTANCE_ID: "a1b2c3d4-0000-0000-0000-lmf000000001"
+  LMF_MCC: "404" 
+  LMF_MNC: "30"

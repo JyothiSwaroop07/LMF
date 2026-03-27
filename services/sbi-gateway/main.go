@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/sbi-gateway/internal/grpcclient"
 	"github.com/5g-lmf/sbi-gateway/internal/handler"
+	"github.com/5g-lmf/sbi-gateway/internal/nrf"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
@@ -115,6 +117,7 @@ func main() {
 	// 	}
 	// }()
 
+	// 1. Start http server
 	go func() {
 		logger.Info("SBI API gateway starting", zap.String("addr", srv.Addr))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -122,12 +125,65 @@ func main() {
 		}
 	}()
 
-	// Wait for shutdown signal
+	// Give the server a moment to bind before registering with NRF
+	time.Sleep(200 * time.Millisecond)
+
+	// 2. Register with NRF
+	lmfIPv4 := os.Getenv("LMF_SBI_IPV4")
+	if lmfIPv4 == "" {
+		lmfIPv4 = "127.0.0.1"
+	}
+	lmfPort := cfg.Server.Port
+	if portStr := os.Getenv("LMF_SBI_PORT"); portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			lmfPort = p
+		}
+	}
+	nfInstanceId := os.Getenv("LMF_NF_INSTANCE_ID")
+	if nfInstanceId == "" {
+		nfInstanceId = "a1b2c3d4-0000-0000-0000-lmf000000001"
+	}
+	mcc := os.Getenv("LMF_MCC")
+	if mcc == "" {
+		mcc = "404"
+	}
+	mnc := os.Getenv("LMF_MNC")
+	if mnc == "" {
+		mnc = "30"
+	}
+
+	nrfURL := os.Getenv("NRF_BASE_URL")
+	logger.Info("NRF registration config: %s", zap.String("nrfURL", nrfURL), zap.String("nfInstanceId", nfInstanceId), zap.String("lmfIPv4", lmfIPv4), zap.Int("lmfPort", lmfPort), zap.String("mcc", mcc), zap.String("mnc", mnc))
+
+	registrar := nrf.NewRegistrar(
+		nrfURL,
+		nfInstanceId,
+		lmfIPv4,
+		lmfPort,
+		mcc, mnc,
+		logger,
+	)
+
+	heartbeatCtx, heartbeatCancel := context.WithCancel(context.Background())
+	defer heartbeatCancel()
+
+	if err := registrar.Register(heartbeatCtx); err != nil {
+		// Log as error but don't Fatal
+		logger.Error("NRF registration failed, continuing without NRF", zap.Error(err))
+	}
+
+	// 3. Wait for shutdown signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("shutting down SBI gateway")
+
+	// 4. Deregister from NRF
+	heartbeatCancel() // stop heartbeat goroutine
+	registrar.Deregister()
+
+	// 5. Gracefully shutdown HTTP server with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {

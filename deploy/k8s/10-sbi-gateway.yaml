@@ -67,10 +67,12 @@ metadata:
 spec:
   selector:
     app: sbi-gateway
+  type: NodePort   # use NodePort for external access in minikube; change to ClusterIP for production
   ports:
   - name: http
     port: 80
     targetPort: 8000
+    NodePort: 30080  # specify NodePort for external access; (NRF will call this port http calls)
   - name: grpc
     port: 9000
     targetPort: 9000
