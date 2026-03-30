@@ -24,7 +24,7 @@ spec:
         image: lmf/session-manager:latest
         imagePullPolicy: Never   # use local image
         ports:
-        - containerPort: 9002
+        - containerPort: 9000 #changed from 9002 to avoid conflict with location-request
           name: grpc
         - containerPort: 2112
           name: metrics
@@ -50,7 +50,7 @@ spec:
   ports:
   - name: grpc
     port: 9002
-    targetPort: 9002
+    targetPort: 9000 #changed from 9002 to avoid conflict with location-request
   - name: metrics
     port: 2112
     targetPort: 2112
