@@ -9,9 +9,12 @@ import (
 
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
+	"github.com/5g-lmf/common/pb"
 	"github.com/5g-lmf/method-selector/internal/selector"
+	"github.com/5g-lmf/method-selector/internal/server"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -43,7 +46,8 @@ func main() {
 		grpc.UnaryInterceptor(middleware.GrpcLoggingInterceptor(logger)),
 	)
 
-	// grpc_pb.RegisterMethodSelectorServiceServer(grpcServer, server.New(methodSelector))
+	pb.RegisterMethodSelectorServiceServer(grpcServer, server.NewSelectorServer(logger))
+	reflection.Register(grpcServer)
 
 	go func() {
 		logger.Info("method selector gRPC server starting", zap.String("addr", addr))

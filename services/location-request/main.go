@@ -56,7 +56,7 @@ func main() {
 	deps := orchestrator.Dependencies{
 		Privacy:         &adapters.NoopPrivacy{},
 		SessionMgr:      adapters.NewGRPCSessionAdapter(clients.SessionManager, logger),
-		MethodSelector:  &adapters.NoopMethodSelector{},
+		MethodSelector:  adapters.NewGRPCMethodSelectorAdapter(clients.MethodSelector, logger),
 		ProtocolHandler: &adapters.NoopProtocol{},
 		GnssEngine:      &adapters.NoopEngine{},
 		TdoaEngine:      &adapters.NoopEngine{},

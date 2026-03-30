@@ -15,7 +15,7 @@ log:
 
 services:
   sessionManager:  "session-manager:9002"
-  methodSelector:  "method-selector:9004"
+  methodSelector:  "method-selector:9000"
   protocolHandler: "protocol-handler:9003"
   gnssEngine:      "gnss-engine:9005"
   tdoaEngine:      "tdoa-engine:9006"

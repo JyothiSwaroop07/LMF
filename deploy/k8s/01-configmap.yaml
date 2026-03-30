@@ -22,7 +22,7 @@ data:
   #MY CHANGES - update service endpoints to match new service names and ports
   LMF_SERVICES_LOCATIONREQUEST: "location-request.lmf.svc.cluster.local:9001"
   LMF_SERVICES_SESSIONMANAGER:  "session-manager.lmf.svc.cluster.local:9002"
-  LMF_SERVICES_METHODSELECTOR:  "method-selector.lmf.svc.cluster.local:9004"
+  LMF_SERVICES_METHODSELECTOR:  "method-selector.lmf.svc.cluster.local:9000"
   LMF_SERVICES_PROTOCOLHANDLER: "protocol-handler.lmf.svc.cluster.local:9003"
   LMF_SERVICES_GNSSENGINE:      "gnss-engine.lmf.svc.cluster.local:9005"
   LMF_SERVICES_TDOAENGINE:      "tdoa-engine.lmf.svc.cluster.local:9006"

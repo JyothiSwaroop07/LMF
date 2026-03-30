@@ -29,9 +29,10 @@ WORKDIR /app
 
 COPY --from=builder /app/method-selector .
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /workspace/services/method-selector/config/ ./config/
 
 USER lmf
 
 EXPOSE 8004 9004 2114
 
-ENTRYPOINT ["/method-selector"]
+ENTRYPOINT ["/app/method-selector"]
