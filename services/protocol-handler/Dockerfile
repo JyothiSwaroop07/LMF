@@ -29,9 +29,10 @@ WORKDIR /app
 
 COPY --from=builder /app/protocol-handler .
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /workspace/services/protocol-handler/config ./config
 
 USER lmf
 
 EXPOSE 8003 9003 2113
 
-ENTRYPOINT ["/protocol-handler"]
+ENTRYPOINT ["/app/protocol-handler"]

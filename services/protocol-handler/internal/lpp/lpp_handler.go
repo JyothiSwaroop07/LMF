@@ -13,25 +13,28 @@ package lpp
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/5g-lmf/common/types"
 	"go.uber.org/zap"
+	"golang.org/x/net/http2"
 )
 
 // MessageType identifies the LPP PDU type per TS 36.355 §6.2.1.
 type MessageType string
 
 const (
-	MsgRequestCapabilities      MessageType = "requestCapabilities"
-	MsgProvideCapabilities      MessageType = "provideCapabilities"
-	MsgRequestAssistanceData    MessageType = "requestAssistanceData"
-	MsgProvideAssistanceData    MessageType = "provideAssistanceData"
-	MsgRequestLocationInfo      MessageType = "requestLocationInformation"
-	MsgProvideLocationInfo      MessageType = "provideLocationInformation"
+	MsgRequestCapabilities   MessageType = "requestCapabilities"
+	MsgProvideCapabilities   MessageType = "provideCapabilities"
+	MsgRequestAssistanceData MessageType = "requestAssistanceData"
+	MsgProvideAssistanceData MessageType = "provideAssistanceData"
+	MsgRequestLocationInfo   MessageType = "requestLocationInformation"
+	MsgProvideLocationInfo   MessageType = "provideLocationInformation"
 )
 
 // LppMessage is the envelope for LPP PDUs sent over the Namf_MT interface.
@@ -52,10 +55,21 @@ type LppHandler struct {
 
 // NewLppHandler creates an LppHandler targeting the AMF's Namf_MT endpoint.
 func NewLppHandler(amfBaseURL string, logger *zap.Logger) *LppHandler {
+
+	//http2.Transport does not support h2c (HTTP/2 without TLS) by default, so we configure it to allow cleartext HTTP/2.
+	transport := &http2.Transport{
+		AllowHTTP: true, // allow h2c (HTTP/2 cleartext, no TLS)
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			return net.Dial(network, addr) // plain TCP, no TLS
+		},
+	}
 	return &LppHandler{
 		amfBaseURL: amfBaseURL,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
-		logger:     logger,
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		},
+		logger: logger,
 	}
 }
 
@@ -81,10 +95,10 @@ func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (
 	)
 
 	return &types.UeCapabilities{
-		GnssSupported:      true,
-		DlTdoaSupported:    true,
-		MultiRttSupported:  true,
-		EcidSupported:      true,
+		GnssSupported:     true,
+		DlTdoaSupported:   true,
+		MultiRttSupported: true,
+		EcidSupported:     true,
 		GnssConstellations: []types.GnssConstellation{
 			types.GnssGPS,
 			types.GnssGalileo,
@@ -154,4 +168,15 @@ func (h *LppHandler) sendToUE(ctx context.Context, supi string, msg LppMessage) 
 func (h *LppHandler) nextTxID() uint8 {
 	h.txCounter = (h.txCounter + 1) % 255
 	return h.txCounter
+}
+
+// SendRaw delivers a raw LPP payload to the UE via AMF.
+func (h *LppHandler) SendRaw(ctx context.Context, supi string, payload []byte) error {
+	msg := LppMessage{
+		TransactionID: h.nextTxID(),
+		SequenceNum:   0,
+		MessageType:   MsgRequestLocationInfo,
+		Payload:       payload,
+	}
+	return h.sendToUE(ctx, supi, msg)
 }

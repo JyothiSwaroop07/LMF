@@ -10,6 +10,7 @@ import (
 
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
+	"github.com/5g-lmf/common/pb"
 	"github.com/5g-lmf/protocol-handler/internal/lpp"
 	"github.com/5g-lmf/protocol-handler/internal/nrppa"
 	"github.com/5g-lmf/protocol-handler/internal/server"
@@ -32,7 +33,10 @@ func main() {
 
 	go middleware.StartMetricsServer(cfg.Metrics.Port)
 
-	amfURL := cfg.AMF.BaseURL
+	amfURL := "http://192.168.138.23:7779" // Update to point to your AMF service
+
+	logger.Info("AMF URL", zap.String("amfURL", amfURL))
+
 	lppHandler := lpp.NewLppHandler(amfURL, logger)
 	nrppaHandler := nrppa.NewNrppaHandler(amfURL, logger)
 	protoServer := server.NewProtocolServer(lppHandler, nrppaHandler, logger)
@@ -47,7 +51,8 @@ func main() {
 		grpc.ChainUnaryInterceptor(middleware.GrpcLoggingInterceptor(logger)),
 	)
 
-	// pb.RegisterProtocolHandlerServiceServer(srv, protoServer)
+	//uncomment the line below and implement the ProtocolHandlerServiceServer interface in server.ProtocolServer to enable gRPC handling of protocol messages.
+	pb.RegisterProtocolHandlerServiceServer(srv, protoServer)
 	reflection.Register(srv)
 
 	logger.Info("Protocol Handler gRPC server starting", zap.String("addr", cfg.GRPC.ListenAddr()))

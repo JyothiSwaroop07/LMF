@@ -57,7 +57,7 @@ func main() {
 		Privacy:         &adapters.NoopPrivacy{},
 		SessionMgr:      adapters.NewGRPCSessionAdapter(clients.SessionManager, logger),
 		MethodSelector:  adapters.NewGRPCMethodSelectorAdapter(clients.MethodSelector, logger),
-		ProtocolHandler: &adapters.NoopProtocol{},
+		ProtocolHandler: adapters.NewGRPCProtocolAdapter(clients.ProtocolHandler, logger),
 		GnssEngine:      &adapters.NoopEngine{},
 		TdoaEngine:      &adapters.NoopEngine{},
 		EcidEngine:      &adapters.NoopEcid{},

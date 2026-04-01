@@ -12,29 +12,32 @@ package nrppa
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
 	"go.uber.org/zap"
+	"golang.org/x/net/http2"
 )
 
 // ProcedureCode identifies the NRPPa procedure per TS 38.455 §7.
 type ProcedureCode uint8
 
 const (
-	ProcE_CID_Measurement       ProcedureCode = 1
-	ProcOTDOAInformation        ProcedureCode = 2
-	ProcPositioningInformation  ProcedureCode = 3
-	ProcMeasurement             ProcedureCode = 4
-	ProcTRPInformation          ProcedureCode = 5
+	ProcE_CID_Measurement      ProcedureCode = 1
+	ProcOTDOAInformation       ProcedureCode = 2
+	ProcPositioningInformation ProcedureCode = 3
+	ProcMeasurement            ProcedureCode = 4
+	ProcTRPInformation         ProcedureCode = 5
 )
 
 // NrppaMessage is the envelope for NRPPa PDUs.
 type NrppaMessage struct {
-	LmfUENGAPID  uint64        `json:"lmfUeNgapId"`
-	RanUENGAPID  uint64        `json:"ranUeNgapId"`
+	LmfUENGAPID   uint64        `json:"lmfUeNgapId"`
+	RanUENGAPID   uint64        `json:"ranUeNgapId"`
 	ProcedureCode ProcedureCode `json:"procedureCode"`
 	Criticality   string        `json:"criticality"` // reject | ignore | notify
 	Payload       []byte        `json:"payload"`
@@ -42,8 +45,8 @@ type NrppaMessage struct {
 
 // MeasurementRequest is the payload for a Measurement procedure request.
 type MeasurementRequest struct {
-	TRPMeasurementQuantities []string `json:"trpMeasurementQuantities"` // e.g. "UL-RTOA", "gNB-RxTxTimeDiff"
-	ReportCharacteristics    string   `json:"reportCharacteristics"`    // "onDemand" | "periodic"
+	TRPMeasurementQuantities []string `json:"trpMeasurementQuantities"`         // e.g. "UL-RTOA", "gNB-RxTxTimeDiff"
+	ReportCharacteristics    string   `json:"reportCharacteristics"`            // "onDemand" | "periodic"
 	MeasurementPeriodicity   int      `json:"measurementPeriodicity,omitempty"` // ms
 }
 
@@ -64,10 +67,21 @@ type NrppaHandler struct {
 
 // NewNrppaHandler creates an NrppaHandler targeting the AMF N2 endpoint.
 func NewNrppaHandler(amfBaseURL string, logger *zap.Logger) *NrppaHandler {
+
+	//http2.Transport does not support h2c (HTTP/2 without TLS) by default, so we configure it to allow cleartext HTTP/2.
+	transport := &http2.Transport{
+		AllowHTTP: true,
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+			return net.Dial(network, addr)
+		},
+	}
 	return &NrppaHandler{
 		amfBaseURL: amfBaseURL,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		logger:     logger,
+		httpClient: &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: transport,
+		},
+		logger: logger,
 	}
 }
 
@@ -148,4 +162,14 @@ func (h *NrppaHandler) sendToGnB(ctx context.Context, msg NrppaMessage) error {
 	}
 
 	return nil
+}
+
+// SendRaw delivers a raw NRPPa payload to the gNB via AMF N2.
+func (h *NrppaHandler) SendRaw(ctx context.Context, payload []byte) error {
+	msg := NrppaMessage{
+		ProcedureCode: ProcMeasurement,
+		Criticality:   "reject",
+		Payload:       payload,
+	}
+	return h.sendToGnB(ctx, msg)
 }
