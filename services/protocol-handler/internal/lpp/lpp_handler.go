@@ -73,37 +73,79 @@ func NewLppHandler(amfBaseURL string, logger *zap.Logger) *LppHandler {
 	}
 }
 
-// SendRequestCapabilities sends an LPP RequestCapabilities to the UE and returns its response.
-func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
-	txID := h.nextTxID()
-
-	msg := LppMessage{
-		TransactionID: txID,
-		SequenceNum:   0,
-		MessageType:   MsgRequestCapabilities,
-	}
-
-	if err := h.sendToUE(ctx, supi, msg); err != nil {
-		return nil, fmt.Errorf("send RequestCapabilities: %w", err)
-	}
-
-	// In production: wait for ProvideCapabilities callback from AMF
-	// Here we simulate a response with GPS+DL-TDOA+MultiRTT capabilities
-	h.logger.Info("LPP RequestCapabilities sent",
-		zap.String("supi", supi),
-		zap.Uint8("txId", txID),
-	)
-
+// hardcodedUeCapabilities returns a fixed UeCapabilities struct that enables
+// high-accuracy positioning methods (AGNSS, DL-TDOA, Multi-RTT, E-CID).
+//
+// NOTE: Open5GS AMF does not expose Namf-Loc, so UE capability exchange via
+// LPP RequestCapabilities/ProvideCapabilities is not possible. These values
+// are hardcoded to represent a capable 5G UE for development/testing purposes.
+// Replace with real LPP capability exchange when AMF-Loc becomes available.
+func hardcodedUeCapabilities() *types.UeCapabilities {
 	return &types.UeCapabilities{
-		GnssSupported:     true,
-		DlTdoaSupported:   true,
-		MultiRttSupported: true,
-		EcidSupported:     true,
+		GnssSupported:      true,
+		DlTdoaSupported:    true,
+		MultiRttSupported:  true,
+		EcidSupported:      true,
+		WlanSupported:      false,
+		BluetoothSupported: false,
 		GnssConstellations: []types.GnssConstellation{
 			types.GnssGPS,
 			types.GnssGalileo,
 		},
-	}, nil
+	}
+}
+
+// SendRequestCapabilities sends an LPP RequestCapabilities to the UE and returns its response.
+// func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
+// 	txID := h.nextTxID()
+
+// 	msg := LppMessage{
+// 		TransactionID: txID,
+// 		SequenceNum:   0,
+// 		MessageType:   MsgRequestCapabilities,
+// 	}
+
+// 	if err := h.sendToUE(ctx, supi, msg); err != nil {
+// 		return nil, fmt.Errorf("send RequestCapabilities: %w", err)
+// 	}
+
+// 	// In production: wait for ProvideCapabilities callback from AMF
+// 	// Here we simulate a response with GPS+DL-TDOA+MultiRTT capabilities
+// 	h.logger.Info("LPP RequestCapabilities sent",
+// 		zap.String("supi", supi),
+// 		zap.Uint8("txId", txID),
+// 	)
+
+// 	return &types.UeCapabilities{
+// 		GnssSupported:     true,
+// 		DlTdoaSupported:   true,
+// 		MultiRttSupported: true,
+// 		EcidSupported:     true,
+// 		GnssConstellations: []types.GnssConstellation{
+// 			types.GnssGPS,
+// 			types.GnssGalileo,
+// 		},
+// 	}, nil
+// }
+
+//Commented the above function until real amf call is required
+
+// SendRequestCapabilities returns hardcoded UE capabilities without contacting
+// the AMF. Open5GS does not implement the Namf-Loc service required to forward
+// LPP messages to the UE, so the AMF rejects any N1N2MessageTransfer for LPP
+// with HTTP 400. Capabilities are therefore synthesised locally.
+func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
+	caps := hardcodedUeCapabilities()
+
+	h.logger.Info("LPP RequestCapabilities: using hardcoded UE capabilities (AMF-Loc not available)",
+		zap.String("supi", supi),
+		zap.Bool("gnss", caps.GnssSupported),
+		zap.Bool("dlTdoa", caps.DlTdoaSupported),
+		zap.Bool("multiRtt", caps.MultiRttSupported),
+		zap.Bool("ecid", caps.EcidSupported),
+	)
+
+	return caps, nil
 }
 
 // SendRequestLocationInfo triggers the UE to provide location measurements.

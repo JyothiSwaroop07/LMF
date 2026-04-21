@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 func main() {
@@ -53,6 +54,24 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
+	// Log incoming requests at Info level with relevant details (method, path, query, remote addr, etc)
+	router.Use(func(c *gin.Context) {
+		logger.Info("incoming request",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.String("raw_query", c.Request.URL.RawQuery),
+			zap.String("remote_addr", c.Request.RemoteAddr),
+			zap.String("host", c.Request.Host),
+			zap.String("proto", c.Request.Proto),
+			zap.String("content_type", c.Request.Header.Get("Content-Type")),
+		)
+		c.Next()
+		logger.Info("request completed",
+			zap.String("path", c.Request.URL.Path),
+			zap.Int("status", c.Writer.Status()),
+		)
+	})
+
 	// Register handlers
 	locationHandler := handler.NewLocationHandler(clients, logger)
 	subscriptionHandler := handler.NewSubscriptionHandler(clients, logger)
@@ -63,8 +82,9 @@ func main() {
 		logger.Info("registering API routes", zap.String("prefix", "/nlmf-loc/v1"))
 		//swaroop comment
 
-		v1.POST("/location-contexts", locationHandler.DetermineLocation)
-		v1.DELETE("/location-contexts/:lcsSessionRef", locationHandler.CancelLocation)
+		//changed location-context to determine-location to match the mobileum request
+		v1.POST("/determine-location", locationHandler.DetermineLocation)
+		v1.DELETE("/determine-location/:lcsSessionRef", locationHandler.CancelLocation)
 		v1.POST("/subscriptions", subscriptionHandler.Subscribe)
 		v1.DELETE("/subscriptions/:subscriptionId", subscriptionHandler.Unsubscribe)
 	}
@@ -77,15 +97,33 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "UP"})
 	})
 
-	// Build HTTP/2 server
+	// 404 handler for unmatched routes
+	router.NoRoute(func(c *gin.Context) {
+		logger.Warn("unmatched route - 404",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.String("host", c.Request.Host),
+			zap.String("remote_addr", c.Request.RemoteAddr),
+		)
+		c.JSON(http.StatusNotFound, gin.H{"error": "route not found", "path": c.Request.URL.Path})
+	})
+
+	// // Build HTTP/2 server
+	// srv := &http.Server{
+	// 	Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+	// 	Handler: router,
+	// }
+
+	// // Enable HTTP/2
+	// if err := http2.ConfigureServer(srv, &http2.Server{}); err != nil {
+	// 	logger.Fatal("configuring http2", zap.Error(err))
+	// }
+
+	h2chandler := h2c.NewHandler(router, &http2.Server{})
+
 	srv := &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler: router,
-	}
-
-	// Enable HTTP/2
-	if err := http2.ConfigureServer(srv, &http2.Server{}); err != nil {
-		logger.Fatal("configuring http2", zap.Error(err))
+		Handler: h2chandler,
 	}
 
 	// TLS configuration

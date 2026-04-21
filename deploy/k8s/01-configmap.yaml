@@ -16,7 +16,7 @@ data:
 
 
 #Updated NRF BASE URL to my open5gs NRF running in my VM
-  NRF_BASE_URL: "http://192.168.138.23:7777"
+  NRF_BASE_URL: "http://192.168.145.26:7777"
 
 
   #MY CHANGES - update service endpoints to match new service names and ports

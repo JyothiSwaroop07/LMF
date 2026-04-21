@@ -71,14 +71,32 @@ func pbReqToTypes(req *pb.MethodSelectionRequest) (types.MethodSelectionRequest,
 			BluetoothSupported:  c.GetBluetoothSupported(),
 			BarometricSupported: c.GetBarometricSupported(),
 		}
+	} else {
+		// Hardcoded fallback: Open5GS does not provide UE capabilities via LPP.
+		// Assume a fully capable 5G UE for development/testing.
+		caps = types.UeCapabilities{
+			GnssSupported:     true,
+			DlTdoaSupported:   true,
+			MultiRttSupported: true,
+			EcidSupported:     true,
+		}
 	}
 
-	qos := types.LcsQoS{}
+	// qos := types.LcsQoS{}
+	// if q := req.GetLcsQos(); q != nil {
+	// 	qos = types.LcsQoS{
+	// 		HorizontalAccuracy: int(q.GetHorizontalAccuracyMeters()),
+	// 		ResponseTime:       pbResponseTimeToTypes(q.GetResponseTime()),
+	// 	}
+	// }
+	// For now, ignore the QoS from the request and use hardcoded values to allow testing of method selection logic without needing to set QoS in the location request.
+	var horizontalAccuracy int
 	if q := req.GetLcsQos(); q != nil {
-		qos = types.LcsQoS{
-			HorizontalAccuracy: int(q.GetHorizontalAccuracyMeters()),
-			ResponseTime:       pbResponseTimeToTypes(q.GetResponseTime()),
-		}
+		horizontalAccuracy = int(q.GetHorizontalAccuracyMeters())
+	}
+	qos := types.LcsQoS{
+		HorizontalAccuracy: horizontalAccuracy,
+		ResponseTime:       types.ResponseTimeDelayTolerant,
 	}
 
 	return types.MethodSelectionRequest{

@@ -72,14 +72,13 @@ spec:
   - name: http
     port: 80
     targetPort: 8000
-    NodePort: 30080  # specify NodePort for external access; (NRF will call this port http calls)
+    nodePort: 30080  # specify NodePort for external access; (NRF will call this port http calls)
   - name: grpc
     port: 9000
     targetPort: 9000
   - name: metrics
     port: 2110
     targetPort: 2110
-  type: ClusterIP
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

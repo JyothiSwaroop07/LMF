@@ -17,7 +17,7 @@ spec:
       containers:
       - name: kafka
         image: apache/kafka:3.7.0
-        imagePullPolicy: Never   # use local image
+        imagePullPolicy: IfNotPresent   # use local image
         ports:
         - containerPort: 9092
           name: client

@@ -50,7 +50,8 @@ func (s *MethodSelector) SelectMethod(req types.MethodSelectionRequest) (*types.
 		}
 	default:
 		// DELAY_TOLERANT or DELAY_TOLERANT_V2: any method
-		if qos.HorizontalAccuracy > 0 && qos.HorizontalAccuracy <= 10 {
+		//changed the condition below to allow testing of method selection logic without needing to set QoS in the location request. If QoS is not set, it will default to high accuracy selection logic.
+		if qos.HorizontalAccuracy == 0 || qos.HorizontalAccuracy <= 10 {
 			// High accuracy
 			if caps.GnssSupported && !indoor {
 				if caps.DlTdoaSupported {
@@ -118,13 +119,13 @@ func buildFallbacks(primary []types.PositioningMethod, caps types.UeCapabilities
 	}
 
 	capMap := map[types.PositioningMethod]bool{
-		types.PositioningMethodAGNSS:    caps.GnssSupported,
-		types.PositioningMethodDLTDOA:   caps.DlTdoaSupported,
-		types.PositioningMethodMultiRTT: caps.MultiRttSupported,
-		types.PositioningMethodNREcid:   caps.EcidSupported,
-		types.PositioningMethodWLAN:     caps.WlanSupported,
+		types.PositioningMethodAGNSS:     caps.GnssSupported,
+		types.PositioningMethodDLTDOA:    caps.DlTdoaSupported,
+		types.PositioningMethodMultiRTT:  caps.MultiRttSupported,
+		types.PositioningMethodNREcid:    caps.EcidSupported,
+		types.PositioningMethodWLAN:      caps.WlanSupported,
 		types.PositioningMethodBluetooth: caps.BluetoothSupported,
-		types.PositioningMethodCellID:   true,
+		types.PositioningMethodCellID:    true,
 	}
 
 	var fallbacks []types.PositioningMethod

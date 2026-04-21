@@ -98,16 +98,27 @@ func (s *ProtocolServer) GetUeCapabilities(ctx context.Context, req *pb.GetUeCap
 // The protocol handler's lpp handler and nrppa handler actually sends the LPP and NRPPa messages in the SendLpp and SendNrppa methods, which are called by the gRPC handlers below.
 
 // Send LPP to UE and NRPPa to gNB for measurement trigger.
+// func (s *ProtocolServer) SendLpp(ctx context.Context, req *pb.SendLppRequest) (*pb.SendLppResponse, error) {
+// 	s.logger.Info("SendLpp called",
+// 		zap.String("supi", req.GetSupi()),
+// 		zap.String("messageType", req.GetMessageType().String()),
+// 	)
+// 	if err := s.lppHandler.SendRaw(ctx, req.GetSupi(), req.GetPayload()); err != nil {
+// 		return nil, fmt.Errorf("SendLpp: %w", err)
+// 	}
+// 	return &pb.SendLppResponse{
+// 		ResponseType: pb.LppMessageType_LPP_MSG_PROVIDE_CAPABILITIES,
+// 	}, nil
+// }
+
+// Simulate SendLpp success without actually sending to AMF, since AMF-Loc is not available. This allows us to test the method selector service's ability to trigger measurements via the protocol handler, even though the protocol handler is not fully implemented yet.
 func (s *ProtocolServer) SendLpp(ctx context.Context, req *pb.SendLppRequest) (*pb.SendLppResponse, error) {
-	s.logger.Info("SendLpp called",
+	s.logger.Info("SendLpp called: skipping AMF send (AMF-Loc not available), simulating success",
 		zap.String("supi", req.GetSupi()),
 		zap.String("messageType", req.GetMessageType().String()),
 	)
-	if err := s.lppHandler.SendRaw(ctx, req.GetSupi(), req.GetPayload()); err != nil {
-		return nil, fmt.Errorf("SendLpp: %w", err)
-	}
 	return &pb.SendLppResponse{
-		ResponseType: pb.LppMessageType_LPP_MSG_PROVIDE_CAPABILITIES,
+		ResponseType: pb.LppMessageType_LPP_MSG_PROVIDE_LOCATION_INFORMATION,
 	}, nil
 }
 
