@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/5g-lmf/common/callbackregistry"
+	"github.com/5g-lmf/common/clients"
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/sbi-gateway/internal/grpcclient"
@@ -40,11 +42,23 @@ func main() {
 	logger.Info("metrics server started", zap.Int("port", cfg.Metrics.Port))
 
 	// Set up gRPC clients
-	clients, err := grpcclient.New(cfg, logger) //swaroop added the arguement logger
+	grpcClients, err := grpcclient.New(cfg, logger) //swaroop added the arguement logger
 	if err != nil {
 		logger.Fatal("creating grpc clients", zap.Error(err))
 	}
-	defer clients.Close()
+	defer grpcClients.Close()
+	// Redis client for callback registry
+	redisClient, err := clients.NewRedisClient(cfg)
+	if err != nil {
+		// Non-fatal: LPP callback delivery won't work but core location still works
+		logger.Error("failed to connect to Redis for callback registry", zap.Error(err))
+	} else {
+		logger.Info("callback registry Redis connected")
+	}
+
+	// Callback registry — delivers AMF N1N2 callbacks to protocol-handler via Redis pub/sub
+	cbRegistry := callbackregistry.NewRegistryFromClient(redisClient.Client(), logger)
+	cbHandler := handler.NewCallbackHandler(cbRegistry, logger)
 
 	// Set up Gin router
 	if cfg.Log.Level != "debug" {
@@ -73,8 +87,8 @@ func main() {
 	})
 
 	// Register handlers
-	locationHandler := handler.NewLocationHandler(clients, logger)
-	subscriptionHandler := handler.NewSubscriptionHandler(clients, logger)
+	locationHandler := handler.NewLocationHandler(grpcClients, logger)
+	subscriptionHandler := handler.NewSubscriptionHandler(grpcClients, logger)
 
 	// Nllmf API routes (per TS 29.572)
 	v1 := router.Group("/nlmf-loc/v1")
@@ -96,6 +110,9 @@ func main() {
 	router.GET("/health/ready", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "UP"})
 	})
+
+	router.POST("/namf-comm/callback/ue-contexts/:supi/n1-n2-messages",
+		cbHandler.HandleN1N2Notification)
 
 	// 404 handler for unmatched routes
 	router.NoRoute(func(c *gin.Context) {

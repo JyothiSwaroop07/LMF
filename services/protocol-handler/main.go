@@ -8,10 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/5g-lmf/common/callbackregistry"
+	"github.com/5g-lmf/common/clients"
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/common/pb"
 	"github.com/5g-lmf/protocol-handler/internal/lpp"
+	namfcomm "github.com/5g-lmf/protocol-handler/internal/namfcomm"
 	"github.com/5g-lmf/protocol-handler/internal/nrppa"
 	"github.com/5g-lmf/protocol-handler/internal/server"
 	"go.uber.org/zap"
@@ -33,14 +36,44 @@ func main() {
 
 	go middleware.StartMetricsServer(cfg.Metrics.Port)
 
-	amfURL := "http://192.168.138.23:7779" // Update to point to your AMF service
+	// ── Mobileum AMF address ──────────────────────────────────────────────────
+	// dest_ip_address and dest_port from the DSX amf_1 node
+	amfBaseURL := "http://192.168.145.26:80"
 
-	logger.Info("AMF URL", zap.String("amfURL", amfURL))
+	// ── LMF callback base URL (reachable by Mobileum AMF) ────────────────────
+	// sbi-gateway is exposed at 192.168.172.53:8000 via kind port mapping
+	// AMF will POST LPP responses to:
+	//   http://192.168.172.53:8000/namf-comm/callback/ue-contexts/<supi>/n1-n2-messages
+	lmfCallbackBase := "http://192.168.172.53:8000/namf-comm/callback"
+	lmfNfID := "a1b2c3d4-0000-0000-0000-lmf000000001"
 
-	lppHandler := lpp.NewLppHandler(amfURL, logger)
-	nrppaHandler := nrppa.NewNrppaHandler(amfURL, logger)
+	logger.Info("protocol-handler starting",
+		zap.String("amfBaseURL", amfBaseURL),
+		zap.String("lmfCallbackBase", lmfCallbackBase),
+	)
+
+	// ── Redis client (reuse existing common client) ───────────────────────────
+	redisClient, err := clients.NewRedisClient(cfg)
+	if err != nil {
+		logger.Fatal("failed to connect to Redis", zap.Error(err))
+	}
+
+	// ── Callback registry via Redis pub/sub ───────────────────────────────────
+	// WaitForCallback() subscribes to "lmf:n1n2callback:<supi>"
+	// Deliver() publishes to same channel (called from sbi-gateway)
+	registry := callbackregistry.NewRegistryFromClient(redisClient.Client(), logger)
+
+	// ── Namf_Communication client ─────────────────────────────────────────────
+	namfClient := namfcomm.NewClient(amfBaseURL, lmfCallbackBase, lmfNfID, logger)
+
+	// ── LPP handler with real AMF flow ────────────────────────────────────────
+	// useRealLPP const in lpp.go controls real vs hardcoded mode
+	lppHandler := lpp.NewLppHandler(amfBaseURL, namfClient, registry, logger)
+
+	// ── NRPPa handler (unchanged) ─────────────────────────────────────────────
+	nrppaHandler := nrppa.NewNrppaHandler(amfBaseURL, logger)
+
 	protoServer := server.NewProtocolServer(lppHandler, nrppaHandler, logger)
-	_ = protoServer
 
 	lis, err := net.Listen("tcp", cfg.GRPC.ListenAddr())
 	if err != nil {
@@ -51,7 +84,6 @@ func main() {
 		grpc.ChainUnaryInterceptor(middleware.GrpcLoggingInterceptor(logger)),
 	)
 
-	//uncomment the line below and implement the ProtocolHandlerServiceServer interface in server.ProtocolServer to enable gRPC handling of protocol messages.
 	pb.RegisterProtocolHandlerServiceServer(srv, protoServer)
 	reflection.Register(srv)
 
