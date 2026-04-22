@@ -116,3 +116,9 @@ func SessionKey(sessionID string) string {
 func SupiIndexKey(supi string) string {
 	return supiIndexKeyPrefix + supi
 }
+
+// Client returns the underlying Redis cluster client.
+// Used by callbackregistry to share the connection.
+func (r *RedisClient) Client() *redis.ClusterClient {
+    return r.client
+}

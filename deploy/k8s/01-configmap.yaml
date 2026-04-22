@@ -8,10 +8,10 @@ metadata:
 data:
   LOG_LEVEL: "info"
   LOG_FORMAT: "json"
-  REDIS_ADDR: "redis-cluster:6379"
+  LMF_REDIS_ADDRESSES: "redis-cluster:6379"
   KAFKA_BROKERS: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092"
   CASSANDRA_HOSTS: "cassandra-0.cassandra:9042,cassandra-1.cassandra:9042,cassandra-2.cassandra:9042"
-  AMF_BASE_URL: "http://192.168.138.23:7779" # Update to point to your AMF service
+  AMF_BASE_URL: "http://192.168.145.26:7777" # Update to point to your AMF service
   UDM_BASE_URL: "http://udm-service.core.svc.cluster.local:8080"
 
 

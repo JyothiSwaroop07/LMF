@@ -11,19 +11,20 @@
 package lpp
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/5g-lmf/common/types"
+	namfcomm "github.com/5g-lmf/protocol-handler/internal/namfcomm"
 	"go.uber.org/zap"
-	"golang.org/x/net/http2"
 )
+
+// useRealLPP controls whether to use real LPP exchange with AMF or hardcoded fallback.
+// Set to true  → real N1N2 subscribe + LPP RequestCapabilities flow with Mobileum AMF.
+// Set to false → hardcoded UE capabilities (safe fallback for Open5GS or offline testing).
+const useRealLPP = true
 
 // MessageType identifies the LPP PDU type per TS 36.355 §6.2.1.
 type MessageType string
@@ -37,41 +38,44 @@ const (
 	MsgProvideLocationInfo   MessageType = "provideLocationInformation"
 )
 
-// LppMessage is the envelope for LPP PDUs sent over the Namf_MT interface.
+// LppMessage is the envelope for LPP PDUs sent over the Namf_Communication interface.
 type LppMessage struct {
 	TransactionID uint8       `json:"transactionId"`
 	SequenceNum   uint8       `json:"sequenceNum"`
 	MessageType   MessageType `json:"messageType"`
-	Payload       []byte      `json:"payload"`
+	Payload       []byte      `json:"payload,omitempty"`
 }
 
-// LppHandler sends and receives LPP messages via AMF (Namf_MT interface).
+// CallbackStore waits for AMF N1N2 callbacks delivered via Redis pub/sub.
+// Implemented by callbackregistry.Registry.
+type CallbackStore interface {
+	WaitForCallback(ctx context.Context, supi string) ([]byte, error)
+}
+
+// LppHandler sends and receives LPP messages via AMF (Namf_Communication interface).
 type LppHandler struct {
-	amfBaseURL string
-	httpClient *http.Client
-	logger     *zap.Logger
-	txCounter  uint8
+	amfBaseURL    string
+	namfClient    *namfcomm.Client
+	callbackStore CallbackStore
+	logger        *zap.Logger
+	txCounter     uint8
 }
 
-// NewLppHandler creates an LppHandler targeting the AMF's Namf_MT endpoint.
-func NewLppHandler(amfBaseURL string, logger *zap.Logger) *LppHandler {
-
-	//http2.Transport does not support h2c (HTTP/2 without TLS) by default, so we configure it to allow cleartext HTTP/2.
-	transport := &http2.Transport{
-		AllowHTTP: true, // allow h2c (HTTP/2 cleartext, no TLS)
-		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr) // plain TCP, no TLS
-		},
-	}
+// NewLppHandler creates an LppHandler.
+//
+//	amfBaseURL     : e.g. "http://192.168.145.26:80"  (kept for legacy sendToUE reference)
+//	namfClient     : Namf_Communication client (subscribe/send/unsubscribe)
+//	callbackStore  : Redis-based registry that delivers AMF callbacks
+func NewLppHandler(amfBaseURL string, namfClient *namfcomm.Client, callbackStore CallbackStore, logger *zap.Logger) *LppHandler {
 	return &LppHandler{
-		amfBaseURL: amfBaseURL,
-		httpClient: &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: transport,
-		},
-		logger: logger,
+		amfBaseURL:    amfBaseURL,
+		namfClient:    namfClient,
+		callbackStore: callbackStore,
+		logger:        logger,
 	}
 }
+
+// ── HARDCODED FALLBACK ────────────────────────────────────────────────────────
 
 // hardcodedUeCapabilities returns a fixed UeCapabilities struct that enables
 // high-accuracy positioning methods (AGNSS, DL-TDOA, Multi-RTT, E-CID).
@@ -95,58 +99,170 @@ func hardcodedUeCapabilities() *types.UeCapabilities {
 	}
 }
 
-// SendRequestCapabilities sends an LPP RequestCapabilities to the UE and returns its response.
-// func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
-// 	txID := h.nextTxID()
-
-// 	msg := LppMessage{
-// 		TransactionID: txID,
-// 		SequenceNum:   0,
-// 		MessageType:   MsgRequestCapabilities,
-// 	}
-
-// 	if err := h.sendToUE(ctx, supi, msg); err != nil {
-// 		return nil, fmt.Errorf("send RequestCapabilities: %w", err)
-// 	}
-
-// 	// In production: wait for ProvideCapabilities callback from AMF
-// 	// Here we simulate a response with GPS+DL-TDOA+MultiRTT capabilities
-// 	h.logger.Info("LPP RequestCapabilities sent",
-// 		zap.String("supi", supi),
-// 		zap.Uint8("txId", txID),
-// 	)
-
-// 	return &types.UeCapabilities{
-// 		GnssSupported:     true,
-// 		DlTdoaSupported:   true,
-// 		MultiRttSupported: true,
-// 		EcidSupported:     true,
-// 		GnssConstellations: []types.GnssConstellation{
-// 			types.GnssGPS,
-// 			types.GnssGalileo,
-// 		},
-// 	}, nil
-// }
-
-//Commented the above function until real amf call is required
-
-// SendRequestCapabilities returns hardcoded UE capabilities without contacting
-// the AMF. Open5GS does not implement the Namf-Loc service required to forward
-// LPP messages to the UE, so the AMF rejects any N1N2MessageTransfer for LPP
-// with HTTP 400. Capabilities are therefore synthesised locally.
-func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
+// useHardcoded returns hardcoded UE capabilities without contacting AMF.
+// Used when useRealLPP=false or as automatic fallback if real LPP exchange fails.
+func (h *LppHandler) useHardcoded(supi string) (*types.UeCapabilities, error) {
 	caps := hardcodedUeCapabilities()
-
-	h.logger.Info("LPP RequestCapabilities: using hardcoded UE capabilities (AMF-Loc not available)",
+	h.logger.Info("LPP RequestCapabilities: using hardcoded UE capabilities (fallback)",
 		zap.String("supi", supi),
 		zap.Bool("gnss", caps.GnssSupported),
 		zap.Bool("dlTdoa", caps.DlTdoaSupported),
 		zap.Bool("multiRtt", caps.MultiRttSupported),
 		zap.Bool("ecid", caps.EcidSupported),
 	)
+	return caps, nil
+}
+
+// ── REAL LPP FLOW ─────────────────────────────────────────────────────────────
+
+// SendRequestCapabilities sends LPP RequestCapabilities to UE via AMF and waits
+// for ProvideCapabilities callback via Redis pub/sub.
+//
+// Flow (when useRealLPP=true):
+//  1. N1N2 Subscribe → Mobileum AMF (register LMF callback URI)
+//  2. Send LPP RequestCapabilities → AMF → UE (simulated by Mobileum SPR)
+//  3. Wait for AMF callback via Redis channel "lmf:n1n2callback:<supi>"
+//  4. Parse UeCapabilities from callback body
+//  5. N1N2 Unsubscribe → AMF (cleanup)
+//
+// Automatically falls back to hardcoded if useRealLPP=false or any step fails.
+func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
+	// ── TOGGLE: flip useRealLPP const at top of file to switch modes ──
+	if !useRealLPP {
+		return h.useHardcoded(supi)
+	}
+
+	h.logger.Info("LPP RequestCapabilities: starting real LPP flow",
+		zap.String("supi", supi),
+		zap.String("amf", h.amfBaseURL),
+	)
+
+	// Step 1: Subscribe to N1N2 notifications for this UE
+	subscriptionID, err := h.namfClient.SubscribeN1N2(ctx, supi)
+	if err != nil {
+		h.logger.Warn("N1N2 subscribe failed, falling back to hardcoded",
+			zap.String("supi", supi),
+			zap.Error(err),
+		)
+		return h.useHardcoded(supi)
+	}
+	h.logger.Info("N1N2 subscribe successful",
+		zap.String("supi", supi),
+		zap.String("subscriptionId", subscriptionID),
+	)
+
+	// Cleanup subscription when done regardless of outcome
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := h.namfClient.UnsubscribeN1N2(cleanupCtx, supi, subscriptionID); err != nil {
+			h.logger.Warn("N1N2 unsubscribe failed",
+				zap.String("supi", supi),
+				zap.Error(err),
+			)
+		} else {
+			h.logger.Info("N1N2 unsubscribe successful", zap.String("supi", supi))
+		}
+	}()
+
+	// Step 2: Build and send LPP RequestCapabilities to UE via AMF
+	txID := h.nextTxID()
+	lppMsg := LppMessage{
+		TransactionID: txID,
+		SequenceNum:   0,
+		MessageType:   MsgRequestCapabilities,
+	}
+	lppBytes, err := json.Marshal(lppMsg)
+	if err != nil {
+		h.logger.Warn("marshal LPP RequestCapabilities failed, using hardcoded", zap.Error(err))
+		return h.useHardcoded(supi)
+	}
+
+	if err := h.namfClient.SendLPP(ctx, supi, lppBytes); err != nil {
+		h.logger.Warn("LPP RequestCapabilities send failed, using hardcoded",
+			zap.String("supi", supi),
+			zap.Error(err),
+		)
+		return h.useHardcoded(supi)
+	}
+	h.logger.Info("LPP RequestCapabilities sent to UE via AMF",
+		zap.String("supi", supi),
+		zap.Uint8("txId", txID),
+	)
+
+	// Step 3: Wait for AMF callback with LPP ProvideCapabilities via Redis
+	waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer waitCancel()
+
+	h.logger.Info("waiting for LPP ProvideCapabilities callback from AMF via Redis",
+		zap.String("supi", supi),
+	)
+
+	callbackBody, err := h.callbackStore.WaitForCallback(waitCtx, supi)
+	if err != nil {
+		h.logger.Warn("LPP ProvideCapabilities callback timeout, using hardcoded",
+			zap.String("supi", supi),
+			zap.Error(err),
+		)
+		return h.useHardcoded(supi)
+	}
+
+	h.logger.Info("LPP ProvideCapabilities callback received",
+		zap.String("supi", supi),
+		zap.String("rawBody", string(callbackBody)),
+	)
+
+	// Step 4: Parse capabilities from callback body
+	caps, err := h.parseProvideCapabilities(callbackBody)
+	if err != nil {
+		h.logger.Warn("parse LPP ProvideCapabilities failed, using hardcoded",
+			zap.String("supi", supi),
+			zap.String("body", string(callbackBody)),
+			zap.Error(err),
+		)
+		return h.useHardcoded(supi)
+	}
+
+	h.logger.Info("LPP ProvideCapabilities parsed successfully",
+		zap.String("supi", supi),
+		zap.Bool("gnss", caps.GnssSupported),
+		zap.Bool("ecid", caps.EcidSupported),
+	)
 
 	return caps, nil
 }
+
+// parseProvideCapabilities parses the AMF callback body into UeCapabilities.
+// Logs the raw body so we can observe Mobileum AMF's actual response format.
+func (h *LppHandler) parseProvideCapabilities(body []byte) (*types.UeCapabilities, error) {
+	// Try LppMessage envelope first
+	var lppMsg LppMessage
+	if err := json.Unmarshal(body, &lppMsg); err == nil &&
+		lppMsg.MessageType == MsgProvideCapabilities &&
+		len(lppMsg.Payload) > 0 {
+
+		h.logger.Info("LPP ProvideCapabilities envelope parsed",
+			zap.Uint8("txId", lppMsg.TransactionID),
+			zap.Int("payloadBytes", len(lppMsg.Payload)),
+		)
+
+		var caps types.UeCapabilities
+		if err := json.Unmarshal(lppMsg.Payload, &caps); err != nil {
+			return nil, fmt.Errorf("parse UeCapabilities payload: %w", err)
+		}
+		return &caps, nil
+	}
+
+	// Try direct UeCapabilities parse (Mobileum may use different format)
+	var caps types.UeCapabilities
+	if err := json.Unmarshal(body, &caps); err == nil {
+		return &caps, nil
+	}
+
+	return nil, fmt.Errorf("unknown ProvideCapabilities format: %s", string(body))
+}
+
+// ── LOCATION INFO ─────────────────────────────────────────────────────────────
 
 // SendRequestLocationInfo triggers the UE to provide location measurements.
 func (h *LppHandler) SendRequestLocationInfo(ctx context.Context, supi, sessionID string, method types.PositioningMethod) error {
@@ -167,7 +283,12 @@ func (h *LppHandler) SendRequestLocationInfo(ctx context.Context, supi, sessionI
 		Payload:       payload,
 	}
 
-	if err := h.sendToUE(ctx, supi, msg); err != nil {
+	lppBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal LPP message: %w", err)
+	}
+
+	if err := h.namfClient.SendLPP(ctx, supi, lppBytes); err != nil {
 		return fmt.Errorf("send RequestLocationInformation: %w", err)
 	}
 
@@ -180,45 +301,12 @@ func (h *LppHandler) SendRequestLocationInfo(ctx context.Context, supi, sessionI
 	return nil
 }
 
-// sendToUE delivers an LPP PDU to the UE via AMF Namf_MT_EnableUEReachability.
-func (h *LppHandler) sendToUE(ctx context.Context, supi string, msg LppMessage) error {
-	body, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshal LPP message: %w", err)
-	}
-
-	url := fmt.Sprintf("%s/namf-mt/v1/ue-contexts/%s/n1-n2-messages", h.amfBaseURL, supi)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create AMF request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("AMF request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("AMF returned HTTP %d", resp.StatusCode)
-	}
-
-	return nil
+// SendRaw delivers a raw LPP payload to the UE via AMF.
+func (h *LppHandler) SendRaw(ctx context.Context, supi string, payload []byte) error {
+	return h.namfClient.SendLPP(ctx, supi, payload)
 }
 
 func (h *LppHandler) nextTxID() uint8 {
 	h.txCounter = (h.txCounter + 1) % 255
 	return h.txCounter
-}
-
-// SendRaw delivers a raw LPP payload to the UE via AMF.
-func (h *LppHandler) SendRaw(ctx context.Context, supi string, payload []byte) error {
-	msg := LppMessage{
-		TransactionID: h.nextTxID(),
-		SequenceNum:   0,
-		MessageType:   MsgRequestLocationInfo,
-		Payload:       payload,
-	}
-	return h.sendToUE(ctx, supi, msg)
 }
