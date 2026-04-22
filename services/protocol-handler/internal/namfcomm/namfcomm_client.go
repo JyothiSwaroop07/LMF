@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"time"
 
+	"strings"
+
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 )
@@ -45,6 +47,10 @@ type N1N2MessageTransferRequest struct {
 type N1MessageContainer struct {
 	N1MessageClass   string `json:"n1MessageClass"`   // "LPP"
 	N1MessageContent []byte `json:"n1MessageContent"` // LPP PDU bytes
+}
+
+type N1MessageContent struct {
+	ContentId string `json:"contentId"` // "LPP" references the Multipart N1MessageContent with contentId "LPP"
 }
 
 // Client is the Namf_Communication HTTP/2 client.
@@ -149,31 +155,40 @@ func (c *Client) SubscribeN1N2(ctx context.Context, supi string) (string, error)
 	return subResp.N1N2NotifySubscriptionId, nil
 }
 
-// SendLPP sends an LPP PDU to the UE via AMF N1 interface.
-// Per TS 29.518 §6.3.3 Namf_Communication_N1N2MessageTransfer.
+// SendLPP sends an LPP PDU to the UE via AMF N1 interface using multipart/related per TS 29.518 §6.3.3.
+// This is needed for larger LPP payloads that exceed AMF limits for JSON body size.
 func (c *Client) SendLPP(ctx context.Context, supi string, lppPayload []byte) error {
-	transferReq := N1N2MessageTransferRequest{
-		N1MessageContainer: &N1MessageContainer{
-			N1MessageClass:   "LPP",
-			N1MessageContent: lppPayload,
-		},
-	}
+	boundary := "Boundary"
 
-	body, err := json.Marshal(transferReq)
-	if err != nil {
-		return fmt.Errorf("marshal N1N2 transfer request: %w", err)
-	}
+	// Part 1: JSON metadata
+	jsonPart := fmt.Sprintf(
+		`{"n1MessageContainer":{"n1MessageClass":"LPP","n1MessageContent":{"contentId":"n1SmMsg"},"nfId":"%s"},"lcsCorrelationId":"%s"}`,
+		c.lmfNfID,
+		// strip "imsi-" prefix for correlationId
+		strings.TrimPrefix(supi, "imsi-"),
+	)
+
+	// Build multipart body
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: application/json\r\n\r\n")
+	fmt.Fprintf(&buf, "%s\r\n", jsonPart)
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	fmt.Fprintf(&buf, "Content-Type: application/vnd.3gpp.5gnas\r\n")
+	fmt.Fprintf(&buf, "Content-Id: n1SmMsg\r\n\r\n")
+	buf.Write(lppPayload)
+	fmt.Fprintf(&buf, "\r\n--%s--\r\n", boundary)
 
 	url := fmt.Sprintf("%s/namf-comm/v1/ue-contexts/%s/n1-n2-messages", c.amfBaseURL, supi)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
 	if err != nil {
 		return fmt.Errorf("create N1N2 transfer request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", fmt.Sprintf("multipart/related; boundary=%s", boundary))
 
-	c.logger.Info("LPP N1N2 transfer sending",
+	c.logger.Info("LPP N1N2 transfer sending (multipart)",
 		zap.String("supi", supi),
-		zap.Int("payloadBytes", len(lppPayload)),
+		zap.Int("lppPayloadBytes", len(lppPayload)),
 	)
 
 	resp, err := c.httpClient.Do(req)
@@ -183,7 +198,6 @@ func (c *Client) SendLPP(ctx context.Context, supi string, lppPayload []byte) er
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-
 	c.logger.Info("LPP N1N2 transfer response",
 		zap.Int("status", resp.StatusCode),
 		zap.String("body", string(respBody)),
