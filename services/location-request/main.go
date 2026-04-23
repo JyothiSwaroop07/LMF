@@ -58,7 +58,7 @@ func main() {
 		SessionMgr:      adapters.NewGRPCSessionAdapter(clients.SessionManager, logger),
 		MethodSelector:  adapters.NewGRPCMethodSelectorAdapter(clients.MethodSelector, logger),
 		ProtocolHandler: adapters.NewGRPCProtocolAdapter(clients.ProtocolHandler, logger),
-		GnssEngine:      &adapters.NoopEngine{},
+		GnssEngine:      adapters.NewGRPCGnssEngineAdapter(clients.GnssEngine, logger),
 		TdoaEngine:      &adapters.NoopEngine{},
 		EcidEngine:      &adapters.NoopEcid{},
 		RttEngine:       &adapters.NoopRtt{},
