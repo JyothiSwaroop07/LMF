@@ -5,11 +5,11 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/5g-lmf/common/callbackregistry"
-	"github.com/5g-lmf/common/clients"
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/common/pb"
@@ -17,6 +17,8 @@ import (
 	namfcomm "github.com/5g-lmf/protocol-handler/internal/namfcomm"
 	"github.com/5g-lmf/protocol-handler/internal/nrppa"
 	"github.com/5g-lmf/protocol-handler/internal/server"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -53,15 +55,60 @@ func main() {
 	)
 
 	// ── Redis client (reuse existing common client) ───────────────────────────
-	redisClient, err := clients.NewRedisClient(cfg)
-	if err != nil {
-		logger.Fatal("failed to connect to Redis", zap.Error(err))
+	// redisClient, err := clients.NewRedisClient(cfg)
+	redisAddrRaw := os.Getenv("LMF_REDIS_ADDRESSES")
+	if redisAddrRaw == "" {
+		redisAddrRaw = viper.GetString("redis.addresses")
+	}
+	if redisAddrRaw == "" {
+		logger.Fatal("no redis addresses configured")
+	}
+
+	redisAddrs := strings.Split(redisAddrRaw, ",")
+	logger.Info("connecting to redis cluster", zap.Strings("addrs", redisAddrs))
+
+	redisClient := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: redisAddrs,
+		ClusterSlots: func(ctx context.Context) ([]redis.ClusterSlot, error) {
+			slots := []redis.ClusterSlot{
+				{
+					Start: 0,
+					End:   5460,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-0.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+				{
+					Start: 5461,
+					End:   10922,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-1.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+				{
+					Start: 10923,
+					End:   16383,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-2.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+			}
+			return slots, nil
+		},
+		RouteByLatency: false,
+		RouteRandomly:  false,
+	})
+
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer pingCancel()
+	if err := redisClient.Ping(pingCtx).Err(); err != nil {
+		logger.Warn("redis ping failed, continuing without persistent cache", zap.Error(err))
 	}
 
 	// ── Callback registry via Redis pub/sub ───────────────────────────────────
 	// WaitForCallback() subscribes to "lmf:n1n2callback:<supi>"
 	// Deliver() publishes to same channel (called from sbi-gateway)
-	registry := callbackregistry.NewRegistryFromClient(redisClient.Client(), logger)
+	registry := callbackregistry.NewRegistryFromClient(redisClient, logger)
 
 	// ── Namf_Communication client ─────────────────────────────────────────────
 	namfClient := namfcomm.NewClient(amfBaseURL, lmfCallbackBase, lmfNfID, logger)

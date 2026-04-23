@@ -15,3 +15,8 @@ metrics:
 log:
   level: "info"
   format: "json"
+redis:
+  addresses:
+    - "redis-cluster-0.redis-cluster.lmf.svc.cluster.local:6379"
+    - "redis-cluster-1.redis-cluster.lmf.svc.cluster.local:6379"
+    - "redis-cluster-2.redis-cluster.lmf.svc.cluster.local:6379"
