@@ -7,17 +7,19 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/5g-lmf/common/callbackregistry"
-	"github.com/5g-lmf/common/clients"
 	"github.com/5g-lmf/common/config"
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/sbi-gateway/internal/grpcclient"
 	"github.com/5g-lmf/sbi-gateway/internal/handler"
 	"github.com/5g-lmf/sbi-gateway/internal/nrf"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -48,16 +50,31 @@ func main() {
 	}
 	defer grpcClients.Close()
 	// Redis client for callback registry
-	redisClient, err := clients.NewRedisClient(cfg)
-	if err != nil {
-		// Non-fatal: LPP callback delivery won't work but core location still works
-		logger.Error("failed to connect to Redis for callback registry", zap.Error(err))
-	} else {
-		logger.Info("callback registry Redis connected")
+
+	// ── Redis client (reuse existing common client) ───────────────────────────
+	// redisClient, err := clients.NewRedisClient(cfg)
+	redisAddrRaw := os.Getenv("LMF_REDIS_ADDRESSES")
+	if redisAddrRaw == "" {
+		redisAddrRaw = viper.GetString("redis.addresses")
+	}
+	if redisAddrRaw == "" {
+		logger.Fatal("no redis addresses configured")
 	}
 
-	// Callback registry — delivers AMF N1N2 callbacks to protocol-handler via Redis pub/sub
-	cbRegistry := callbackregistry.NewRegistryFromClient(redisClient.Client(), logger)
+	redisAddrs := strings.Split(redisAddrRaw, ",")
+	logger.Info("connecting to redis cluster", zap.Strings("addrs", redisAddrs))
+
+	redisClient := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: redisAddrs,
+	})
+
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer pingCancel()
+	if err := redisClient.Ping(pingCtx).Err(); err != nil {
+		logger.Warn("redis ping failed, continuing without persistent cache", zap.Error(err))
+	}
+
+	cbRegistry := callbackregistry.NewRegistryFromClient(redisClient, logger)
 	cbHandler := handler.NewCallbackHandler(cbRegistry, logger)
 
 	// Set up Gin router
