@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/5g-lmf/common/pb"
 	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
@@ -35,9 +37,53 @@ func main() {
 		logger.Fatal("failed to read config", zap.Error(err))
 	}
 
-	redisAddrs := viper.GetStringSlice("redis.addresses")
+	// redisAddrs := viper.GetStringSlice("redis.addresses")
+
+	redisAddrRaw := os.Getenv("LMF_REDIS_ADDRESSES")
+	if redisAddrRaw == "" {
+		redisAddrRaw = viper.GetString("redis.addresses")
+	}
+	if redisAddrRaw == "" {
+		logger.Fatal("no redis addresses configured")
+	}
+
+	redisAddrs := strings.Split(redisAddrRaw, ",")
+	logger.Info("connecting to redis cluster", zap.Strings("addrs", redisAddrs))
+
+	// rdb := redis.NewClusterClient(&redis.ClusterOptions{
+	// 	Addrs: redisAddrs,
+	// })
+
 	rdb := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: redisAddrs,
+		ClusterSlots: func(ctx context.Context) ([]redis.ClusterSlot, error) {
+			slots := []redis.ClusterSlot{
+				{
+					Start: 0,
+					End:   5460,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-0.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+				{
+					Start: 5461,
+					End:   10922,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-1.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+				{
+					Start: 10923,
+					End:   16383,
+					Nodes: []redis.ClusterNode{
+						{Addr: "redis-cluster-2.redis-cluster.lmf.svc.cluster.local:6379"},
+					},
+				},
+			}
+			return slots, nil
+		},
+		RouteByLatency: false,
+		RouteRandomly:  false,
 	})
 
 	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -100,7 +146,8 @@ func main() {
 			loggingInterceptor(logger),
 		),
 	)
-	server.RegisterGnssEngineServiceServer(grpcSrv, gnssServer)
+	// server.RegisterGnssEngineServiceServer(grpcSrv, gnssServer)
+	pb.RegisterGnssEngineServiceServer(grpcSrv, gnssServer)
 	reflection.Register(grpcSrv)
 
 	go func() {
