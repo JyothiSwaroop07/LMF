@@ -1,16 +1,3 @@
-// Package lpp implements LPP (LTE Positioning Protocol) message handling per 3GPP TS 36.355.
-//
-// LPP is transported over NAS (N1 interface via AMF) and carries:
-//   - RequestCapabilities / ProvideCapabilities
-//   - RequestAssistanceData / ProvideAssistanceData
-//   - RequestLocationInformation / ProvideLocationInformation
-//
-// LPP PDUs are encoded as ASN.1 UPER (Unaligned Packed Encoding Rules) per TS 36.355.
-// The verified PDU bytes below were extracted from a Mobileum dsTest reference capture
-// and confirmed to be accepted by Mobileum AMF.
-//
-// TODO: Replace with runtime ASN.1 UPER encoding once TS 36.355 schema is available.
-// Reference: 3GPP TS 36.355 "LTE Positioning Protocol (LPP)"
 package lpp
 
 import (
@@ -24,37 +11,14 @@ import (
 	"go.uber.org/zap"
 )
 
-// useRealLPP controls whether to use real LPP exchange with AMF or hardcoded fallback.
-// Set to true  → real N1N2 subscribe + LPP flow with Mobileum AMF.
-// Set to false → hardcoded UE capabilities (safe fallback for offline testing).
 const useRealLPP = true
 
-// ── Verified ASN.1 UPER encoded LPP PDUs ─────────────────────────────────────
-//
-// These bytes were extracted from a Mobileum dsTest fully-simulated MT-LR pcap
-// (lmf_filtered_fully_simulated.pcapng) and verified to be accepted by Mobileum AMF.
-//
-// Encoding details (per TS 36.355 §6.2.1 LPP-Message UPER):
-//   - transactionID: initiator=originatingMessage(0), transactionNumber=0
-//   - endTransaction: false
-//   - acknowledgement: ackRequested=true
-//
-// requestCapabilitiesPDU:
-//
-//	sequenceNumber=1, lpp-MessageBody=requestCapabilities
-//	RequestCapabilities-r9-IEs with GNSS(GPS/WAAS), OTDOA, ECID capabilities
-//	Matches DSX lcs_profile: gnss_id=gps, otdoa mode=0x80, ecid meas=0xe0
 var requestCapabilitiesPDU = []byte{
 	0xf0, 0x00, 0x01, 0x40, 0x0f, 0x70, 0x00, 0x00,
 	0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 }
 
-// requestLocationInfoPDU:
-//
-//	sequenceNumber=2, lpp-MessageBody=requestLocationInformation
-//	RequestLocationInformation-r9-IEs with locationEstimateRequired
-//	Matches DSX location_data: locationInformationType=locationEstimateRequired
-var requestLocationInfoPDU = []byte{
+var provideAssistanceDataPDU = []byte{
 	0xf2, 0x03, 0x02, 0xc0, 0x86, 0x0c, 0xcb, 0x44,
 	0x00, 0x01, 0x40, 0x15, 0x70, 0x1b, 0x10, 0x50,
 	0x70, 0x90, 0xb0, 0x90, 0x50, 0x70, 0x2f, 0xfd,
@@ -73,9 +37,10 @@ var requestLocationInfoPDU = []byte{
 	0x61,
 }
 
-// ── Message envelope ──────────────────────────────────────────────────────────
+var requestLocationInfoPDU = []byte{
+	0xf0, 0x04, 0x03, 0x48, 0x12, 0x00, 0x00, 0x00,
+}
 
-// MessageType identifies the LPP PDU type per TS 36.355 §6.2.1.
 type MessageType string
 
 const (
@@ -87,8 +52,6 @@ const (
 	MsgProvideLocationInfo   MessageType = "provideLocationInformation"
 )
 
-// LppMessage is a JSON envelope used only for parsing AMF callbacks.
-// Outbound PDUs use raw ASN.1 UPER bytes directly.
 type LppMessage struct {
 	TransactionID uint8       `json:"transactionId"`
 	SequenceNum   uint8       `json:"sequenceNum"`
@@ -96,41 +59,40 @@ type LppMessage struct {
 	Payload       []byte      `json:"payload,omitempty"`
 }
 
-// CallbackStore waits for AMF N1N2 callbacks delivered via Redis pub/sub.
-// Implemented by callbackregistry.Registry.
 type CallbackStore interface {
+	Register(ctx context.Context, supi string) (<-chan []byte, error)
+	WaitOnChannel(ctx context.Context, ch <-chan []byte) ([]byte, error)
 	WaitForCallback(ctx context.Context, supi string) ([]byte, error)
 }
 
-// ── LppHandler ────────────────────────────────────────────────────────────────
-
-// LppHandler sends and receives LPP messages via AMF (Namf_Communication interface).
-type LppHandler struct {
-	amfBaseURL    string
-	namfClient    *namfcomm.Client
-	callbackStore CallbackStore
-	logger        *zap.Logger
-	txCounter     uint8
+type MeasurementStore interface {
+	Store(ctx context.Context, sessionID string, payload []byte) error
 }
 
-// NewLppHandler creates an LppHandler.
-//
-//	amfBaseURL     : e.g. "http://192.168.145.26:80"
-//	namfClient     : Namf_Communication client (subscribe/send/unsubscribe)
-//	callbackStore  : Redis-based registry that delivers AMF callbacks
-func NewLppHandler(amfBaseURL string, namfClient *namfcomm.Client, callbackStore CallbackStore, logger *zap.Logger) *LppHandler {
+type LppHandler struct {
+	amfBaseURL       string
+	namfClient       *namfcomm.Client
+	callbackStore    CallbackStore
+	measurementStore MeasurementStore
+	logger           *zap.Logger
+}
+
+func NewLppHandler(
+	amfBaseURL string,
+	namfClient *namfcomm.Client,
+	callbackStore CallbackStore,
+	measurementStore MeasurementStore,
+	logger *zap.Logger,
+) *LppHandler {
 	return &LppHandler{
-		amfBaseURL:    amfBaseURL,
-		namfClient:    namfClient,
-		callbackStore: callbackStore,
-		logger:        logger,
+		amfBaseURL:       amfBaseURL,
+		namfClient:       namfClient,
+		callbackStore:    callbackStore,
+		measurementStore: measurementStore,
+		logger:           logger,
 	}
 }
 
-// ── HARDCODED FALLBACK ────────────────────────────────────────────────────────
-
-// hardcodedUeCapabilities returns a fixed UeCapabilities struct.
-// Used when useRealLPP=false or as automatic fallback if real LPP exchange fails.
 func hardcodedUeCapabilities() *types.UeCapabilities {
 	return &types.UeCapabilities{
 		GnssSupported:      true,
@@ -146,157 +108,211 @@ func hardcodedUeCapabilities() *types.UeCapabilities {
 	}
 }
 
-func (h *LppHandler) useHardcoded(supi string) (*types.UeCapabilities, error) {
-	caps := hardcodedUeCapabilities()
-	h.logger.Info("LPP RequestCapabilities: using hardcoded UE capabilities (fallback)",
-		zap.String("supi", supi),
-	)
-	return caps, nil
-}
-
-// ── REAL LPP FLOW ─────────────────────────────────────────────────────────────
-
-// SendRequestCapabilities sends LPP RequestCapabilities to UE via AMF and waits
-// for ProvideCapabilities callback via Redis pub/sub.
-//
-// Flow:
-//  1. N1N2 Subscribe → Mobileum AMF
-//  2. Send ASN.1 UPER LPP RequestCapabilities → AMF → UE (Mobileum SPR)
-//  3. Wait for AMF callback via Redis "lmf:n1n2callback:<supi>"
-//  4. Parse UeCapabilities from callback
-//  5. N1N2 Unsubscribe → AMF
+// SendRequestCapabilities sends only RequestCapabilities and returns UE caps.
+// One subscription, one exchange, then unsubscribe.
+// Called by GetUeCapabilities — fast path, no sessionID needed.
 func (h *LppHandler) SendRequestCapabilities(ctx context.Context, supi string) (*types.UeCapabilities, error) {
 	if !useRealLPP {
-		return h.useHardcoded(supi)
+		return hardcodedUeCapabilities(), nil
 	}
 
-	h.logger.Info("LPP RequestCapabilities: starting real LPP flow",
-		zap.String("supi", supi),
-		zap.String("amf", h.amfBaseURL),
-		zap.String("pdu_hex", fmt.Sprintf("%x", requestCapabilitiesPDU)),
-	)
+	sessionCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 
-	// Step 1: Subscribe to N1N2 notifications
-	subscriptionID, err := h.namfClient.SubscribeN1N2(ctx, supi)
+	// Pre-register Redis channel BEFORE subscribing to AMF
+	callbackCh, err := h.callbackStore.Register(sessionCtx, supi)
 	if err != nil {
-		h.logger.Warn("N1N2 subscribe failed, falling back to hardcoded",
-			zap.String("supi", supi),
-			zap.Error(err),
-		)
-		return h.useHardcoded(supi)
+		h.logger.Warn("Redis pre-register failed, falling back",
+			zap.String("supi", supi), zap.Error(err))
+		return hardcodedUeCapabilities(), nil
 	}
-	h.logger.Info("N1N2 subscribe successful",
-		zap.String("supi", supi),
-		zap.String("subscriptionId", subscriptionID),
-	)
 
-	// Cleanup subscription when done
+	subscriptionID, err := h.namfClient.SubscribeN1N2(sessionCtx, supi)
+	if err != nil {
+		h.logger.Warn("N1N2 subscribe failed, falling back",
+			zap.String("supi", supi), zap.Error(err))
+		return hardcodedUeCapabilities(), nil
+	}
 	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := h.namfClient.UnsubscribeN1N2(cleanupCtx, supi, subscriptionID); err != nil {
-			h.logger.Warn("N1N2 unsubscribe failed", zap.String("supi", supi), zap.Error(err))
-		} else {
-			h.logger.Info("N1N2 unsubscribe successful", zap.String("supi", supi))
-		}
+		cleanupCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+		defer c()
+		h.namfClient.UnsubscribeN1N2(cleanupCtx, supi, subscriptionID)
+		h.logger.Info("N1N2 unsubscribed after RequestCapabilities",
+			zap.String("supi", supi))
 	}()
 
-	// Step 2: Send ASN.1 UPER encoded LPP RequestCapabilities
-	if err := h.namfClient.SendLPP(ctx, supi, requestCapabilitiesPDU); err != nil {
-		h.logger.Warn("LPP RequestCapabilities send failed, falling back",
-			zap.String("supi", supi),
-			zap.Error(err),
-		)
-		return h.useHardcoded(supi)
+	if err := h.namfClient.SendLPP(sessionCtx, supi, requestCapabilitiesPDU); err != nil {
+		h.logger.Warn("RequestCapabilities send failed, falling back",
+			zap.String("supi", supi), zap.Error(err))
+		return hardcodedUeCapabilities(), nil
 	}
-	h.logger.Info("LPP RequestCapabilities sent (ASN.1 UPER)",
-		zap.String("supi", supi),
-		zap.Int("bytes", len(requestCapabilitiesPDU)),
-	)
+	h.logger.Info("RequestCapabilities sent", zap.String("supi", supi))
 
-	// Step 3: Wait for AMF callback with LPP ProvideCapabilities via Redis
-	waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer waitCancel()
-
-	h.logger.Info("waiting for LPP ProvideCapabilities callback from AMF",
-		zap.String("supi", supi),
-	)
-
-	callbackBody, err := h.callbackStore.WaitForCallback(waitCtx, supi)
+	body, err := h.callbackStore.WaitOnChannel(sessionCtx, callbackCh)
 	if err != nil {
-		h.logger.Warn("LPP ProvideCapabilities callback timeout, falling back",
-			zap.String("supi", supi),
-			zap.Error(err),
-		)
-		return h.useHardcoded(supi)
+		h.logger.Warn("ProvideCapabilities timeout, falling back",
+			zap.String("supi", supi), zap.Error(err))
+		return hardcodedUeCapabilities(), nil
 	}
+	h.logger.Info("ProvideCapabilities received",
+		zap.String("supi", supi), zap.Int("bytes", len(body)))
 
-	h.logger.Info("LPP ProvideCapabilities callback received from AMF",
-		zap.String("supi", supi),
-		zap.String("rawBody", string(callbackBody)),
-		zap.Int("bodyBytes", len(callbackBody)),
-	)
-
-	// Step 4: Parse capabilities — Mobileum AMF sends LPP binary in multipart
-	// Log the raw body so we can observe Mobileum's exact response format
-	caps, err := h.parseProvideCapabilities(callbackBody)
+	caps, err := h.parseProvideCapabilities(body)
 	if err != nil {
-		h.logger.Warn("parse LPP ProvideCapabilities failed, falling back",
-			zap.String("supi", supi),
-			zap.String("body", string(callbackBody)),
-			zap.Error(err),
-		)
-		return h.useHardcoded(supi)
+		return hardcodedUeCapabilities(), nil
 	}
-
-	h.logger.Info("LPP ProvideCapabilities parsed successfully",
-		zap.String("supi", supi),
-		zap.Bool("gnss", caps.GnssSupported),
-		zap.Bool("ecid", caps.EcidSupported),
-		zap.Bool("dlTdoa", caps.DlTdoaSupported),
-	)
-
 	return caps, nil
 }
 
-// parseProvideCapabilities parses the AMF callback body.
-// Mobileum AMF sends a multipart body — we log it first to understand the format,
-// then extract UeCapabilities. Since ProvideCapabilities is also ASN.1 UPER encoded,
-// we return hardcoded capabilities mapped from what the DSX lcs_profile declares.
-func (h *LppHandler) parseProvideCapabilities(body []byte) (*types.UeCapabilities, error) {
-	h.logger.Info("parsing ProvideCapabilities callback",
-		zap.String("body", string(body)),
+// SendRequestLocationInfoAndWait runs the full assistance + location flow
+// under a single subscription with the real sessionID.
+// Called by SendLpp(REQUEST_LOCATION_INFORMATION) — measurements are stored in Redis.
+//
+// Flow:
+//  1. Subscribe to N1N2
+//  2. Wait for RequestAssistanceData from UE
+//  3. Send ProvideAssistanceData
+//  4. Wait for Acknowledgement from UE
+//  5. Send RequestLocationInformation
+//  6. Wait for ProvideLocationInformation
+//  7. Store in Redis under "lmf:gnss:measurements:<sessionID>"
+//  8. Unsubscribe
+func (h *LppHandler) SendRequestLocationInfoAndWait(ctx context.Context, supi, sessionID string) error {
+	sessionCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	subscriptionID, err := h.namfClient.SubscribeN1N2(sessionCtx, supi)
+	if err != nil {
+		return fmt.Errorf("N1N2 subscribe: %w", err)
+	}
+	h.logger.Info("N1N2 subscribed for location session",
+		zap.String("supi", supi),
+		zap.String("sessionId", sessionID),
+		zap.String("subscriptionId", subscriptionID),
+	)
+	defer func() {
+		cleanupCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+		defer c()
+		h.namfClient.UnsubscribeN1N2(cleanupCtx, supi, subscriptionID)
+		h.logger.Info("N1N2 unsubscribed after location session",
+			zap.String("supi", supi))
+	}()
+
+	// Step 1: Wait for RequestAssistanceData from UE
+	h.logger.Info("waiting for RequestAssistanceData from UE",
+		zap.String("supi", supi))
+	radBody, err := h.waitForCallback(sessionCtx, supi, 15*time.Second)
+	if err != nil {
+		h.logger.Warn("RequestAssistanceData not received, skipping assistance step",
+			zap.String("supi", supi), zap.Error(err))
+		// Non-fatal — proceed directly to RequestLocationInformation
+	} else {
+		h.logger.Info("RequestAssistanceData received",
+			zap.String("supi", supi),
+			zap.String("hex", fmt.Sprintf("%x", radBody)),
+		)
+
+		// Step 2: Send ProvideAssistanceData
+		if err := h.namfClient.SendLPP(sessionCtx, supi, provideAssistanceDataPDU); err != nil {
+			h.logger.Warn("ProvideAssistanceData send failed, continuing",
+				zap.String("supi", supi), zap.Error(err))
+		} else {
+			h.logger.Info("ProvideAssistanceData sent",
+				zap.String("supi", supi),
+				zap.Int("bytes", len(provideAssistanceDataPDU)),
+			)
+		}
+
+		// Step 3: Wait for Acknowledgement from UE
+		h.logger.Info("waiting for Acknowledgement from UE", zap.String("supi", supi))
+		ackBody, err := h.waitForCallback(sessionCtx, supi, 10*time.Second)
+		if err != nil {
+			h.logger.Warn("Acknowledgement not received, continuing",
+				zap.String("supi", supi), zap.Error(err))
+		} else {
+			h.logger.Info("Acknowledgement received",
+				zap.String("supi", supi),
+				zap.String("hex", fmt.Sprintf("%x", ackBody)),
+			)
+		}
+	}
+
+	// Step 4: Send RequestLocationInformation and wait for response
+	return h.doRequestLocationInformation(sessionCtx, supi, sessionID)
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+func (h *LppHandler) doRequestLocationInformation(ctx context.Context, supi, sessionID string) error {
+	callbackCh, err := h.callbackStore.Register(ctx, supi)
+	if err != nil {
+		return fmt.Errorf("register callback: %w", err)
+	}
+
+	if err := h.namfClient.SendLPP(ctx, supi, requestLocationInfoPDU); err != nil {
+		return fmt.Errorf("send RequestLocationInformation: %w", err)
+	}
+	h.logger.Info("RequestLocationInformation sent",
+		zap.String("supi", supi),
+		zap.String("sessionId", sessionID),
+	)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	body, err := h.callbackStore.WaitOnChannel(waitCtx, callbackCh)
+	if err != nil {
+		return fmt.Errorf("ProvideLocationInformation timeout: %w", err)
+	}
+	h.logger.Info("ProvideLocationInformation received",
+		zap.String("supi", supi),
+		zap.String("sessionId", sessionID),
+		zap.Int("bytes", len(body)),
 		zap.String("hex", fmt.Sprintf("%x", body)),
 	)
 
-	// Try JSON envelope first (in case callback wraps in JSON)
+	if sessionID != "" && h.measurementStore != nil {
+		if err := h.measurementStore.Store(ctx, sessionID, body); err != nil {
+			h.logger.Warn("failed to store measurements",
+				zap.String("sessionId", sessionID), zap.Error(err))
+		} else {
+			h.logger.Info("measurements stored in Redis",
+				zap.String("sessionId", sessionID))
+		}
+	}
+	return nil
+}
+
+func (h *LppHandler) waitForCallback(ctx context.Context, supi string, timeout time.Duration) ([]byte, error) {
+	callbackCh, err := h.callbackStore.Register(ctx, supi)
+	if err != nil {
+		return nil, fmt.Errorf("register: %w", err)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return h.callbackStore.WaitOnChannel(waitCtx, callbackCh)
+}
+
+func (h *LppHandler) parseProvideCapabilities(body []byte) (*types.UeCapabilities, error) {
+	h.logger.Info("parsing ProvideCapabilities",
+		zap.String("hex", fmt.Sprintf("%x", body)))
+
 	var lppMsg LppMessage
 	if err := json.Unmarshal(body, &lppMsg); err == nil &&
 		lppMsg.MessageType == MsgProvideCapabilities {
-		h.logger.Info("parsed as JSON LppMessage envelope",
-			zap.Uint8("txId", lppMsg.TransactionID),
-		)
-		// Return capabilities based on what we know the DSX UE supports
 		return h.capabilitiesFromDSX(), nil
 	}
 
-	// Try direct UeCapabilities JSON
 	var caps types.UeCapabilities
-	if err := json.Unmarshal(body, &caps); err == nil && (caps.GnssSupported || caps.EcidSupported) {
-		h.logger.Info("parsed as direct UeCapabilities JSON")
+	if err := json.Unmarshal(body, &caps); err == nil &&
+		(caps.GnssSupported || caps.EcidSupported) {
 		return &caps, nil
 	}
 
-	// Body is likely multipart with ASN.1 UPER LPP ProvideCapabilities binary
-	// The DSX lcs_profile declares: gnss=gps, otdoa, ecid — return those capabilities
-	// TODO: proper ASN.1 UPER decode when TS 36.355 schema is available
-	h.logger.Info("body is ASN.1 UPER binary (multipart) — mapping from DSX lcs_profile capabilities")
+	h.logger.Info("ASN.1 UPER binary — mapping from DSX lcs_profile")
 	return h.capabilitiesFromDSX(), nil
 }
 
-// capabilitiesFromDSX returns UeCapabilities matching the Mobileum DSX lcs_profile.
-// DSX declares: gnss_id=gps, otdoa mode=0x80, ecid meas=0xe0
-// These are the capabilities the simulated UE will always report.
 func (h *LppHandler) capabilitiesFromDSX() *types.UeCapabilities {
 	return &types.UeCapabilities{
 		GnssSupported:      true,
@@ -305,40 +321,10 @@ func (h *LppHandler) capabilitiesFromDSX() *types.UeCapabilities {
 		EcidSupported:      true,
 		WlanSupported:      false,
 		BluetoothSupported: false,
-		GnssConstellations: []types.GnssConstellation{
-			types.GnssGPS,
-		},
+		GnssConstellations: []types.GnssConstellation{types.GnssGPS},
 	}
 }
 
-// ── LOCATION INFO ─────────────────────────────────────────────────────────────
-
-// SendRequestLocationInfo sends LPP RequestLocationInformation to UE via AMF.
-func (h *LppHandler) SendRequestLocationInfo(ctx context.Context, supi, sessionID string, method types.PositioningMethod) error {
-	h.logger.Info("LPP RequestLocationInformation sending (ASN.1 UPER)",
-		zap.String("supi", supi),
-		zap.String("sessionId", sessionID),
-		zap.String("method", string(method)),
-		zap.Int("bytes", len(requestLocationInfoPDU)),
-	)
-
-	if err := h.namfClient.SendLPP(ctx, supi, requestLocationInfoPDU); err != nil {
-		return fmt.Errorf("send RequestLocationInformation: %w", err)
-	}
-
-	h.logger.Info("LPP RequestLocationInformation sent",
-		zap.String("supi", supi),
-		zap.String("method", string(method)),
-	)
-	return nil
-}
-
-// SendRaw delivers a raw LPP payload to the UE via AMF.
 func (h *LppHandler) SendRaw(ctx context.Context, supi string, payload []byte) error {
 	return h.namfClient.SendLPP(ctx, supi, payload)
-}
-
-func (h *LppHandler) nextTxID() uint8 {
-	h.txCounter = (h.txCounter + 1) % 255
-	return h.txCounter
 }

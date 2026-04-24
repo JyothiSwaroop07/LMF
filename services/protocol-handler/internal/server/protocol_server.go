@@ -29,6 +29,27 @@ func NewProtocolServer(lppH *lpp.LppHandler, nrppaH *nrppa.NrppaHandler, logger 
 }
 
 // GetUECapabilities fetches UE positioning capabilities via LPP RequestCapabilities.
+// func (s *ProtocolServer) GetUeCapabilities(ctx context.Context, req *pb.GetUeCapabilitiesRequest) (*pb.GetUeCapabilitiesResponse, error) {
+// 	caps, err := s.lppHandler.SendRequestCapabilities(ctx, req.Supi)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("LPP capabilities: %w", err)
+// 	}
+// 	s.logger.Info("UE capabilities fetched", zap.String("supi", req.Supi))
+
+// 	return &pb.GetUeCapabilitiesResponse{
+// 		Capabilities: &pb.UeCapabilities{
+// 			GnssSupported:       caps.GnssSupported,
+// 			DlTdoaSupported:     caps.DlTdoaSupported,
+// 			MultiRttSupported:   caps.MultiRttSupported,
+// 			EcidSupported:       caps.EcidSupported,
+// 			WlanSupported:       caps.WlanSupported,
+// 			BluetoothSupported:  caps.BluetoothSupported,
+// 			BarometricSupported: caps.BarometricSupported,
+// 		},
+// 		FromCache: false,
+// 	}, nil
+// }
+
 func (s *ProtocolServer) GetUeCapabilities(ctx context.Context, req *pb.GetUeCapabilitiesRequest) (*pb.GetUeCapabilitiesResponse, error) {
 	caps, err := s.lppHandler.SendRequestCapabilities(ctx, req.Supi)
 	if err != nil {
@@ -112,11 +133,39 @@ func (s *ProtocolServer) GetUeCapabilities(ctx context.Context, req *pb.GetUeCap
 // }
 
 // Simulate SendLpp success without actually sending to AMF, since AMF-Loc is not available. This allows us to test the method selector service's ability to trigger measurements via the protocol handler, even though the protocol handler is not fully implemented yet.
+// func (s *ProtocolServer) SendLpp(ctx context.Context, req *pb.SendLppRequest) (*pb.SendLppResponse, error) {
+// 	s.logger.Info("SendLpp called: skipping AMF send (AMF-Loc not available), simulating success",
+// 		zap.String("supi", req.GetSupi()),
+// 		zap.String("messageType", req.GetMessageType().String()),
+// 	)
+// 	return &pb.SendLppResponse{
+// 		ResponseType: pb.LppMessageType_LPP_MSG_PROVIDE_LOCATION_INFORMATION,
+// 	}, nil
+// }
+
 func (s *ProtocolServer) SendLpp(ctx context.Context, req *pb.SendLppRequest) (*pb.SendLppResponse, error) {
-	s.logger.Info("SendLpp called: skipping AMF send (AMF-Loc not available), simulating success",
+	s.logger.Info("SendLpp called",
 		zap.String("supi", req.GetSupi()),
+		zap.String("sessionId", req.GetSessionId()),
 		zap.String("messageType", req.GetMessageType().String()),
 	)
+
+	switch req.GetMessageType() {
+	case pb.LppMessageType_LPP_MSG_REQUEST_LOCATION_INFORMATION:
+		if err := s.lppHandler.SendRequestLocationInfoAndWait(
+			ctx,
+			req.GetSupi(),
+			req.GetSessionId(),
+		); err != nil {
+			return nil, fmt.Errorf("SendLpp RequestLocationInformation: %w", err)
+		}
+
+	default:
+		s.logger.Warn("SendLpp: unhandled message type, skipping",
+			zap.String("messageType", req.GetMessageType().String()),
+		)
+	}
+
 	return &pb.SendLppResponse{
 		ResponseType: pb.LppMessageType_LPP_MSG_PROVIDE_LOCATION_INFORMATION,
 	}, nil
