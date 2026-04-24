@@ -14,6 +14,7 @@ import (
 	"github.com/5g-lmf/common/middleware"
 	"github.com/5g-lmf/common/pb"
 	"github.com/5g-lmf/protocol-handler/internal/lpp"
+	"github.com/5g-lmf/protocol-handler/internal/measurementstore"
 	namfcomm "github.com/5g-lmf/protocol-handler/internal/namfcomm"
 	"github.com/5g-lmf/protocol-handler/internal/nrppa"
 	"github.com/5g-lmf/protocol-handler/internal/server"
@@ -113,9 +114,11 @@ func main() {
 	// ── Namf_Communication client ─────────────────────────────────────────────
 	namfClient := namfcomm.NewClient(amfBaseURL, lmfCallbackBase, lmfNfID, logger)
 
+	measStore := measurementstore.NewStore(redisClient, logger)
+
 	// ── LPP handler with real AMF flow ────────────────────────────────────────
 	// useRealLPP const in lpp.go controls real vs hardcoded mode
-	lppHandler := lpp.NewLppHandler(amfBaseURL, namfClient, registry, logger)
+	lppHandler := lpp.NewLppHandler(amfBaseURL, namfClient, registry, measStore, logger)
 
 	// ── NRPPa handler (unchanged) ─────────────────────────────────────────────
 	nrppaHandler := nrppa.NewNrppaHandler(amfBaseURL, logger)
